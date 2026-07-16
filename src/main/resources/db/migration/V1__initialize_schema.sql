@@ -1,0 +1,2 @@
+-- Foundation migration intentionally contains no business tables.
+-- Flyway creates and owns only its schema history table at this stage.
