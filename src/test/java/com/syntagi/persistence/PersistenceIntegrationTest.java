@@ -234,7 +234,7 @@ class PersistenceIntegrationTest {
 
     @Test
     void flywayAndHibernateValidateTheCompleteSchema() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("8");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("10");
         assertThat(appointmentSlotRepository.count()).isZero();
     }
 

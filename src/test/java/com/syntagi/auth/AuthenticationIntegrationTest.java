@@ -184,6 +184,13 @@ class AuthenticationIntegrationTest {
     }
 
     @Test
+    void readinessProbeDoesNotRequireAuthentication() throws Exception {
+        mockMvc.perform(get("/actuator/health/readiness"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("UP"));
+    }
+
+    @Test
     void authenticatedMeReturnsCurrentContext() throws Exception {
         String email = uniqueEmail("me");
         String token = accessToken(register(email));

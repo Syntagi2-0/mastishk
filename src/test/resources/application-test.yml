@@ -1,4 +1,7 @@
 syntagi:
+  queue:
+    scheduler:
+      cron: "0 0 0 1 1 *"
   security:
     jwt:
       secret: test-secret-that-is-at-least-thirty-two-bytes-long

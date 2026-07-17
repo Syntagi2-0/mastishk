@@ -3,14 +3,14 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_DB: syntagi_lite
-      POSTGRES_USER: syntagi
-      POSTGRES_PASSWORD: syntagi_local_password
+      POSTGRES_USER: ${DB_USERNAME:-syntagi}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
     ports:
       - "5432:5432"
     volumes:
       - syntagi_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U syntagi -d syntagi_lite"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,14 +21,21 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: local
       DB_URL: jdbc:postgresql://postgres:5432/syntagi_lite
-      DB_USERNAME: syntagi
-      DB_PASSWORD: syntagi_local_password
-      JWT_SECRET: local-docker-secret-change-me-at-least-32-bytes
+      DB_USERNAME: ${DB_USERNAME:-syntagi}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
     ports:
       - "8080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/actuator/health/readiness | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: unless-stopped
 
 volumes:
   syntagi_postgres_data:

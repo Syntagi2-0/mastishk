@@ -138,6 +138,10 @@ class BusinessStaffIntegrationTest {
                 .andExpect(jsonPath("$.data.businessId").value(owner.businessId().toString()))
                 .andExpect(jsonPath("$.data.role").value("STAFF"))
                 .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+        mockMvc.perform(get("/api/dashboard").header("Authorization", bearer(staffToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.business.name").isNotEmpty())
+                .andExpect(jsonPath("$.data.totalActiveStaff").value(1));
     }
 
     @Test

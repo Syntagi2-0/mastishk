@@ -36,19 +36,6 @@ public interface ServiceScheduleRepository extends JpaRepository<ServiceSchedule
             @Param("operatingStartTime") LocalTime operatingStartTime,
             @Param("operatingEndTime") LocalTime operatingEndTime);
 
-    List<ServiceSchedule> findByDayOfWeekAndActiveTrue(DayOfWeek dayOfWeek);
-
-    @EntityGraph(attributePaths = {"businessService", "businessService.business"})
-    @Query("""
-            select ss from ServiceSchedule ss
-            where ss.dayOfWeek = :dayOfWeek
-              and ss.active = true
-              and ss.businessService.active = true
-            order by ss.operatingStartTime asc
-            """)
-    List<ServiceSchedule> findActiveQueueOpeningCandidates(
-            @Param("dayOfWeek") DayOfWeek dayOfWeek);
-
     @EntityGraph(attributePaths = {"businessService", "businessService.business"})
     @Query("""
             select ss from ServiceSchedule ss

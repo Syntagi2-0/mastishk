@@ -4,13 +4,13 @@ spring:
       on-profile: local
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/syntagi_lite}
-    username: ${DB_USERNAME:syntagi}
-    password: ${DB_PASSWORD:syntagi_local_password}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
 
 syntagi:
   security:
     jwt:
-      secret: ${JWT_SECRET:local-development-secret-change-me-32-bytes-minimum}
+      secret: ${JWT_SECRET}
 
 logging:
   level:

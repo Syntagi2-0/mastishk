@@ -43,6 +43,20 @@ public enum ErrorCode {
     INVALID_ENTITY_STATE(HttpStatus.CONFLICT, "Entity state does not allow this operation"),
     INVALID_QUEUE_TOKEN_TRANSITION(HttpStatus.CONFLICT, "Queue token status transition is invalid"),
     SLOT_CAPACITY_EXCEEDED(HttpStatus.CONFLICT, "Appointment slot has no available capacity"),
+    APPOINTMENT_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "Service does not support appointments"),
+    SLOT_NOT_FOUND(HttpStatus.NOT_FOUND, "Appointment slot was not found"),
+    SLOT_UNAVAILABLE(HttpStatus.CONFLICT, "Appointment slot is unavailable"),
+    SLOT_FULL(HttpStatus.CONFLICT, "Appointment slot is full"),
+    DUPLICATE_SLOT_GENERATION(HttpStatus.CONFLICT, "Appointment slots already exist for the requested range"),
+    SLOT_HAS_CONFIRMED_BOOKINGS(
+            HttpStatus.CONFLICT, "Slot status cannot be changed while confirmed bookings exist"),
+    APPOINTMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Appointment was not found"),
+    MOBILE_MISMATCH(HttpStatus.FORBIDDEN, "Mobile number does not match the appointment"),
+    APPOINTMENT_ALREADY_CANCELLED(HttpStatus.CONFLICT, "Appointment is already cancelled"),
+    INVALID_APPOINTMENT_STATUS_TRANSITION(
+            HttpStatus.CONFLICT, "Appointment status transition is invalid"),
+    FUTURE_APPOINTMENT_NOT_ELIGIBLE(
+            HttpStatus.CONFLICT, "Future appointment token is not yet eligible"),
     QUEUE_SESSION_CLOSED(HttpStatus.CONFLICT, "Queue session is closed"),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
 

@@ -24,6 +24,8 @@ public class QueueManagementService {
     private final QueueTokenRepository tokenRepository;
     private final QueueMapper mapper;
     private final QueueTimeService timeService;
+    private final QueueTokenLifecycleService tokenLifecycleService;
+    private final QueueNotificationCoordinator notificationCoordinator;
 
     public QueueManagementService(
             AuthenticatedBusinessContextService contextService,
@@ -31,13 +33,17 @@ public class QueueManagementService {
             QueueOrderingService orderingService,
             QueueTokenRepository tokenRepository,
             QueueMapper mapper,
-            QueueTimeService timeService) {
+            QueueTimeService timeService,
+            QueueTokenLifecycleService tokenLifecycleService,
+            QueueNotificationCoordinator notificationCoordinator) {
         this.contextService = contextService;
         this.sessionAccessService = sessionAccessService;
         this.orderingService = orderingService;
         this.tokenRepository = tokenRepository;
         this.mapper = mapper;
         this.timeService = timeService;
+        this.tokenLifecycleService = tokenLifecycleService;
+        this.notificationCoordinator = notificationCoordinator;
     }
 
     @Transactional(readOnly = true)
@@ -63,7 +69,7 @@ public class QueueManagementService {
         ensureOpen(session);
         QueueToken current = session.getCurrentToken();
         if (current != null) {
-            current.complete(timeService.nowOffset());
+            tokenLifecycleService.complete(current, timeService.nowOffset());
             session.clearCurrentToken();
         }
         callNext(session);
@@ -80,6 +86,7 @@ public class QueueManagementService {
             throw new ApplicationException(ErrorCode.NO_CURRENT_QUEUE_TOKEN);
         }
         current.skip(timeService.nowOffset());
+        notificationCoordinator.tokenSkipped(current);
         session.clearCurrentToken();
         callNext(session);
         return currentResponse(session);
@@ -98,6 +105,7 @@ public class QueueManagementService {
     private void callNext(QueueSession session) {
         orderingService.nextWaitingToken(session.getId()).ifPresent(next -> {
             next.call(timeService.nowOffset());
+            notificationCoordinator.tokenCalled(next);
             session.setCurrentToken(next);
         });
     }

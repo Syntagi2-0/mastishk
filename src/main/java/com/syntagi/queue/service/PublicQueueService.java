@@ -117,22 +117,30 @@ public class PublicQueueService {
                 .orElseThrow(() -> new ApplicationException(ErrorCode.QUEUE_TOKEN_NOT_FOUND));
         QueueSession session = token.getQueueSession();
         List<QueueToken> waiting = orderingService.waitingTokens(session.getId());
-        long waitingCustomers = waiting.size();
-        Integer estimatedPosition = null;
-        long estimatedWaitingCount = 0;
+        long customersAhead = 0;
         if (token.getStatus() == QueueTokenStatus.WAITING) {
-            estimatedPosition = waiting.indexOf(token) + 1;
-            estimatedWaitingCount = Math.max(0, estimatedPosition - 1L);
-        } else if (token.getStatus() == QueueTokenStatus.CALLED) {
-            estimatedPosition = 0;
+            int position = waiting.indexOf(token);
+            long currentlyServing = session.getCurrentToken() == null ? 0 : 1;
+            customersAhead = Math.max(0, position) + currentlyServing;
         }
+        int expectedDuration = token.getBusinessService().getExpectedDurationMinutes() == null
+                ? 0 : token.getBusinessService().getExpectedDurationMinutes();
         return new LiveQueueResponse(
-                token.getTokenDisplay(),
-                token.getStatus(),
+                token.getBusiness().getName(),
+                token.getBusinessService().getName(),
                 session.getCurrentToken() == null
                         ? null : session.getCurrentToken().getTokenDisplay(),
-                waitingCustomers,
-                estimatedPosition,
-                estimatedWaitingCount);
+                token.getTokenDisplay(),
+                token.getStatus(),
+                customersAhead,
+                customersAhead,
+                customersAhead * expectedDuration,
+                session.getStatus(),
+                token.getTokenDisplay(),
+                token.getStatus(),
+                waiting.size(),
+                token.getStatus() == QueueTokenStatus.CALLED
+                        ? 0 : token.getStatus() == QueueTokenStatus.WAITING
+                                ? waiting.indexOf(token) + 1 : null);
     }
 }

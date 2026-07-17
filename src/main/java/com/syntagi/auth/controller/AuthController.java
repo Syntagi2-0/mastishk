@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -28,6 +29,7 @@ public class AuthController {
     }
 
     @PostMapping("/register-owner")
+    @SecurityRequirements
     public ResponseEntity<ApiResponse<AuthResponse>> registerOwner(
             @Valid @RequestBody RegisterOwnerRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -35,6 +37,7 @@ public class AuthController {
     }
 
     @PostMapping("/login")
+    @SecurityRequirements
     public ApiResponse<AuthResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.success(authService.login(request));
     }

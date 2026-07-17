@@ -14,6 +14,22 @@ import org.springframework.data.repository.query.Param;
 
 public interface AppointmentSlotRepository extends JpaRepository<AppointmentSlot, UUID> {
 
+    List<AppointmentSlot> findByBusinessIdAndBusinessServiceIdAndSlotDateOrderByStartTimeAsc(
+            UUID businessId, UUID businessServiceId, LocalDate slotDate);
+
+    List<AppointmentSlot> findByBusinessIdAndSlotDateOrderByStartTimeAsc(
+            UUID businessId, LocalDate slotDate);
+
+    List<AppointmentSlot> findByBusinessIdOrderBySlotDateAscStartTimeAsc(UUID businessId);
+
+    boolean existsByBusinessServiceIdAndSlotDateAndStartTime(
+            UUID businessServiceId, LocalDate slotDate, java.time.LocalTime startTime);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select slot from AppointmentSlot slot where slot.id = :id and slot.business.id = :businessId")
+    Optional<AppointmentSlot> findByIdAndBusinessIdForUpdate(
+            @Param("id") UUID id, @Param("businessId") UUID businessId);
+
     @EntityGraph(attributePaths = "businessService")
     @Query("""
             select slot from AppointmentSlot slot

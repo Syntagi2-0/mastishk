@@ -73,6 +73,9 @@ public class Notification extends BaseEntity {
     @Column(name = "sent_at")
     private OffsetDateTime sentAt;
 
+    @Column(name = "deduplication_key", length = 150)
+    private String deduplicationKey;
+
     public Notification(
             Business business,
             Customer customer,
@@ -82,7 +85,8 @@ public class Notification extends BaseEntity {
             NotificationType notificationType,
             String recipient,
             String title,
-            String message) {
+            String message,
+            String deduplicationKey) {
         this.business = Objects.requireNonNull(business, "business is required");
         this.customer = customer;
         this.appointment = appointment;
@@ -93,12 +97,13 @@ public class Notification extends BaseEntity {
         this.recipient = trimToNull(recipient);
         this.title = trimToNull(title);
         this.message = requireText(message, "message");
+        this.deduplicationKey = trimToNull(deduplicationKey);
     }
 
-    public void markSent() {
+    public void markSent(OffsetDateTime sentAt) {
         ensurePending();
         status = NotificationStatus.SENT;
-        sentAt = OffsetDateTime.now(ZoneOffset.UTC);
+        this.sentAt = Objects.requireNonNull(sentAt, "sentAt is required");
         failureReason = null;
     }
 

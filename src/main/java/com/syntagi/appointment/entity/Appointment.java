@@ -99,7 +99,7 @@ public class Appointment extends BaseEntity {
     public void cancel(String reason, OffsetDateTime cancelledAt) {
         requireStatus(AppointmentStatus.CONFIRMED);
         this.status = AppointmentStatus.CANCELLED;
-        this.cancellationReason = requireText(reason, "cancellationReason");
+        this.cancellationReason = trimToNull(reason);
         this.cancelledAt = Objects.requireNonNull(cancelledAt, "cancelledAt is required");
     }
 

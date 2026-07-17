@@ -14,6 +14,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface BusinessUserRepository extends JpaRepository<BusinessUser, UUID> {
 
+    long countByBusinessIdAndRoleAndStatus(
+            UUID businessId, BusinessRole role, BusinessUserStatus status);
+
     @EntityGraph(attributePaths = {"business", "user"})
     @Query("""
             select bu from BusinessUser bu
@@ -21,16 +24,6 @@ public interface BusinessUserRepository extends JpaRepository<BusinessUser, UUID
             """)
     Optional<BusinessUser> findByBusinessIdAndUserId(
             @Param("businessId") UUID businessId, @Param("userId") UUID userId);
-
-    @EntityGraph(attributePaths = "user")
-    @Query("""
-            select bu from BusinessUser bu
-            where bu.business.id = :businessId and bu.status = :status
-            order by bu.createdAt asc
-            """)
-    List<BusinessUser> findByBusinessIdAndStatus(
-            @Param("businessId") UUID businessId,
-            @Param("status") BusinessUserStatus status);
 
     @Query("""
             select (count(bu) > 0) from BusinessUser bu

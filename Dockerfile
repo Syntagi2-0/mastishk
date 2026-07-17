@@ -3,10 +3,9 @@ WORKDIR /workspace
 
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
-RUN ./mvnw -B -DskipTests dependency:go-offline
-
 COPY src/ src/
-RUN ./mvnw -B clean package -DskipTests
+RUN --mount=type=cache,target=/root/.m2 \
+    ./mvnw -B clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S syntagi && adduser -S syntagi -G syntagi
@@ -14,4 +13,6 @@ WORKDIR /app
 COPY --from=build /workspace/target/syntagi-lite-*.jar app.jar
 USER syntagi
 EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=12 \
+  CMD wget -q -O - http://localhost:8080/actuator/health/readiness | grep -q '"status":"UP"' || exit 1
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

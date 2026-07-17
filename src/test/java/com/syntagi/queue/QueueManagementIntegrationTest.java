@@ -248,9 +248,77 @@ class QueueManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.currentToken").value("W001"))
                 .andExpect(jsonPath("$.data.waitingCustomers").value(1))
                 .andExpect(jsonPath("$.data.estimatedPosition").value(1))
-                .andExpect(jsonPath("$.data.estimatedWaitingCount").value(0))
+                .andExpect(jsonPath("$.data.estimatedWaitingCount").value(1))
+                .andExpect(jsonPath("$.data.business").value(setup.service().getBusiness().getName()))
+                .andExpect(jsonPath("$.data.service").value(setup.service().getName()))
+                .andExpect(jsonPath("$.data.customerToken").value("W002"))
+                .andExpect(jsonPath("$.data.customerStatus").value("WAITING"))
+                .andExpect(jsonPath("$.data.customersAhead").value(1))
+                .andExpect(jsonPath("$.data.estimatedWaitingTimeMinutes").value(10))
+                .andExpect(jsonPath("$.data.queueStatus").value("OPEN"))
                 .andExpect(jsonPath("$.data.serviceId").doesNotExist())
-                .andExpect(jsonPath("$.data.customerId").doesNotExist());
+                .andExpect(jsonPath("$.data.customerId").doesNotExist())
+                .andExpect(jsonPath("$.data.customerName").doesNotExist())
+                .andExpect(jsonPath("$.data.mobile").doesNotExist());
+    }
+
+    @Test
+    void dashboardAndTodayQueueSummarizeOnlyTheAuthenticatedBusiness() throws Exception {
+        QueueSetup first = readyQueue("dashboard-first");
+        QueueSetup second = readyQueue("dashboard-second");
+        walkIn(first, "Dashboard First", "+919900012001");
+        walkIn(first, "Dashboard Second", "+919900012002");
+        walkIn(second, "Other Tenant", "+919900012003");
+        advance(first);
+
+        mockMvc.perform(get("/api/dashboard")
+                        .header("Authorization", bearer(first.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.business.name")
+                        .value(first.service().getBusiness().getName()))
+                .andExpect(jsonPath("$.data.queue.currentToken").value("W001"))
+                .andExpect(jsonPath("$.data.queue.currentCustomer").value("Dashboard First"))
+                .andExpect(jsonPath("$.data.queue.waitingCount").value(1))
+                .andExpect(jsonPath("$.data.queue.totalTokensToday").value(2))
+                .andExpect(jsonPath("$.data.totalActiveServices").value(1));
+
+        mockMvc.perform(get("/api/dashboard/today-queue")
+                        .header("Authorization", bearer(first.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.current[0].tokenDisplay").value("W001"))
+                .andExpect(jsonPath("$.data.waiting[0].tokenDisplay").value("W002"))
+                .andExpect(jsonPath("$.data.current.length()").value(1))
+                .andExpect(jsonPath("$.data.waiting.length()").value(1));
+    }
+
+    @Test
+    void qrBusinessAndSearchApisArePublicSafeAndTenantIsolated() throws Exception {
+        QueueSetup first = readyQueue("qr-search-first");
+        QueueSetup second = readyQueue("qr-search-second");
+        walkIn(first, "Searchable Customer", "+919900013001");
+        walkIn(second, "Other Searchable", "+919900013002");
+
+        mockMvc.perform(get("/api/public/businesses/{code}", first.publicQueueCode()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.business").value(first.service().getBusiness().getName()))
+                .andExpect(jsonPath("$.data.businessType").value("CLINIC"))
+                .andExpect(jsonPath("$.data.queueStatus").value("OPEN"))
+                .andExpect(jsonPath("$.data.availableServices[0].serviceId")
+                        .value(first.service().getId().toString()))
+                .andExpect(jsonPath("$.data.internalId").doesNotExist());
+
+        mockMvc.perform(get("/api/customers")
+                        .param("search", "Searchable")
+                        .header("Authorization", bearer(first.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].fullName").value("Searchable Customer"));
+
+        mockMvc.perform(get("/api/services/search")
+                        .param("search", "qr-search-first")
+                        .header("Authorization", bearer(first.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.page.totalElements").value(1));
     }
 
     @Test

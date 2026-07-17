@@ -4,6 +4,7 @@ import com.syntagi.business.entity.Business;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
@@ -28,5 +29,9 @@ public class QueueTimeService {
 
     public LocalDate businessDate(Business business) {
         return now().atZone(ZoneId.of(business.getTimezone())).toLocalDate();
+    }
+
+    public LocalTime businessTime(Business business) {
+        return now().atZone(ZoneId.of(business.getTimezone())).toLocalTime();
     }
 }

@@ -27,13 +27,16 @@ public class QueueSessionProvisioningService {
     private final ServiceScheduleRepository scheduleRepository;
     private final QueueSessionRepository sessionRepository;
     private final TransactionTemplate transactionTemplate;
+    private final AppointmentQueueTokenCoordinator appointmentTokenCoordinator;
 
     public QueueSessionProvisioningService(
             ServiceScheduleRepository scheduleRepository,
             QueueSessionRepository sessionRepository,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            AppointmentQueueTokenCoordinator appointmentTokenCoordinator) {
         this.scheduleRepository = scheduleRepository;
         this.sessionRepository = sessionRepository;
+        this.appointmentTokenCoordinator = appointmentTokenCoordinator;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -51,12 +54,13 @@ public class QueueSessionProvisioningService {
                             schedule.getBusinessService().getId(), due.businessDate())) {
                         return false;
                     }
-                    sessionRepository.saveAndFlush(new QueueSession(
+                    QueueSession session = sessionRepository.saveAndFlush(new QueueSession(
                             schedule.getBusinessService().getBusiness(),
                             schedule.getBusinessService(),
                             schedule,
                             due.businessDate(),
                             now.atOffset(ZoneOffset.UTC)));
+                    appointmentTokenCoordinator.generateFor(session);
                     return true;
                 });
                 if (Boolean.TRUE.equals(wasCreated)) {

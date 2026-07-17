@@ -18,6 +18,11 @@ import java.util.Locale;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
 @Service
 public class ServiceCatalogService {
@@ -67,6 +72,29 @@ public class ServiceCatalogService {
                 .stream()
                 .map(mapper::toServiceResponse)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ServiceResponse> search(
+            String search, Boolean active, ServiceMode serviceMode, Pageable pageable) {
+        UUID businessId = contextService.current().business().getId();
+        Specification<BusinessService> filters = (root, query, cb) -> {
+            var predicates = new java.util.ArrayList<jakarta.persistence.criteria.Predicate>();
+            predicates.add(cb.equal(root.get("business").get("id"), businessId));
+            if (active != null) predicates.add(cb.equal(root.get("active"), active));
+            if (serviceMode != null) predicates.add(cb.equal(root.get("serviceMode"), serviceMode));
+            if (search != null && !search.isBlank()) {
+                String pattern = "%" + search.trim().toLowerCase(Locale.ROOT) + "%";
+                predicates.add(cb.or(
+                        cb.like(cb.lower(root.get("name")), pattern),
+                        cb.like(cb.lower(root.get("serviceCode")), pattern),
+                        cb.like(cb.lower(root.get("description")), pattern)));
+            }
+            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+        Pageable safePage = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
+                Sort.by("displayOrder").ascending().and(Sort.by("name").ascending()));
+        return serviceRepository.findAll(filters, safePage).map(mapper::toServiceResponse);
     }
 
     @Transactional(readOnly = true)

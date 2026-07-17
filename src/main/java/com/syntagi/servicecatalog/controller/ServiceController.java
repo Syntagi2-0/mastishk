@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 @RestController
 @RequestMapping("/api/services")
@@ -41,6 +43,16 @@ public class ServiceController {
     public ApiResponse<List<ServiceResponse>> list(
             @RequestParam(required = false) Boolean active) {
         return ApiResponse.success(serviceCatalogService.list(active));
+    }
+
+    @GetMapping("/search")
+    public ApiResponse<Page<ServiceResponse>> search(
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) Boolean active,
+            @RequestParam(required = false) com.syntagi.servicecatalog.enums.ServiceMode serviceMode,
+            Pageable pageable) {
+        return ApiResponse.success(
+                serviceCatalogService.search(search, active, serviceMode, pageable));
     }
 
     @GetMapping("/{serviceId}")

@@ -9,13 +9,21 @@ spring:
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:20}
       minimum-idle: ${DB_MIN_IDLE:5}
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:30000}
+      validation-timeout: ${DB_VALIDATION_TIMEOUT_MS:5000}
+      max-lifetime: ${DB_MAX_LIFETIME_MS:1800000}
   jpa:
+    show-sql: false
     properties:
       hibernate:
         generate_statistics: false
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
 syntagi:
   security:
+    cors:
+      allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS}
     jwt:
       secret: ${JWT_SECRET}
 
@@ -23,3 +31,16 @@ logging:
   level:
     root: WARN
     com.syntagi: INFO
+    org.hibernate.SQL: WARN
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+server:
+  tomcat:
+    threads:
+      max: ${SERVER_MAX_THREADS:200}
+  shutdown: graceful
