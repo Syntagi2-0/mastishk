@@ -76,8 +76,10 @@ public class PublicServiceQueryService {
                 .map(service -> {
                     QueueSession session = sessionsByService.get(service.getId());
                     QueueSessionStatus status = session == null
+                                    || !session.getQueue().isActive()
+                                    || !session.isOpen()
                             ? QueueSessionStatus.CLOSED
-                            : session.getStatus();
+                            : QueueSessionStatus.OPEN;
                     return mapper.toPublicServiceResponse(service, status);
                 })
                 .toList();

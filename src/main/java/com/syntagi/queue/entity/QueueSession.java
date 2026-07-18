@@ -16,6 +16,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.Objects;
 import lombok.AccessLevel;
@@ -27,6 +28,10 @@ import lombok.NoArgsConstructor;
 @Table(name = "queue_sessions")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class QueueSession extends BaseEntity {
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "queue_id", nullable = false)
+    private QueueConfiguration queue;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "business_id", nullable = false)
@@ -66,25 +71,98 @@ public class QueueSession extends BaseEntity {
     @Column(name = "opened_at", nullable = false)
     private OffsetDateTime openedAt;
 
+    @Column(name = "opening_time", nullable = false)
+    private LocalTime openingTime;
+
+    @Column(name = "closing_time")
+    private LocalTime closingTime;
+
     @Column(name = "closed_at")
     private OffsetDateTime closedAt;
 
     public QueueSession(
+            QueueConfiguration queue,
             Business business,
             BusinessService businessService,
             ServiceSchedule serviceSchedule,
             LocalDate businessDate,
             OffsetDateTime openedAt) {
+        this(
+                queue,
+                business,
+                businessService,
+                serviceSchedule,
+                businessDate,
+                serviceSchedule == null
+                        ? openedAt.atZoneSameInstant(java.time.ZoneOffset.UTC).toLocalTime()
+                        : serviceSchedule.getOperatingStartTime(),
+                serviceSchedule == null ? null : serviceSchedule.getOperatingEndTime(),
+                openedAt);
+    }
+
+    public QueueSession(
+            QueueConfiguration queue,
+            Business business,
+            BusinessService businessService,
+            ServiceSchedule serviceSchedule,
+            LocalDate businessDate,
+            LocalTime openingTime,
+            LocalTime closingTime,
+            OffsetDateTime openedAt) {
+        this.queue = Objects.requireNonNull(queue, "queue is required");
         this.business = Objects.requireNonNull(business, "business is required");
         this.businessService = Objects.requireNonNull(
                 businessService, "businessService is required");
         this.serviceSchedule = serviceSchedule;
         this.businessDate = Objects.requireNonNull(businessDate, "businessDate is required");
+        this.openingTime = Objects.requireNonNull(openingTime, "openingTime is required");
+        this.closingTime = closingTime;
         this.openedAt = Objects.requireNonNull(openedAt, "openedAt is required");
     }
 
-    public void close(OffsetDateTime closedAt) {
+    public static QueueSession created(
+            QueueConfiguration queue,
+            ServiceSchedule serviceSchedule,
+            LocalDate businessDate,
+            LocalTime openingTime,
+            LocalTime closingTime,
+            OffsetDateTime createdAt) {
+        QueueSession session = new QueueSession(
+                queue,
+                queue.getBusiness(),
+                queue.getBusinessService(),
+                serviceSchedule,
+                businessDate,
+                openingTime,
+                closingTime,
+                createdAt);
+        session.status = QueueSessionStatus.CREATED;
+        return session;
+    }
+
+    public void open() {
+        if (status != QueueSessionStatus.CREATED) {
+            throw new InvalidEntityStateException("Only a created queue session can be opened");
+        }
+        status = QueueSessionStatus.OPEN;
+    }
+
+    public void pause() {
         ensureOpen();
+        status = QueueSessionStatus.PAUSED;
+    }
+
+    public void resume() {
+        if (status != QueueSessionStatus.PAUSED) {
+            throw new InvalidEntityStateException("Only a paused queue session can be resumed");
+        }
+        status = QueueSessionStatus.OPEN;
+    }
+
+    public void close(OffsetDateTime closedAt) {
+        if (status != QueueSessionStatus.OPEN && status != QueueSessionStatus.PAUSED) {
+            throw new QueueSessionClosedException();
+        }
         OffsetDateTime closingTime = Objects.requireNonNull(closedAt, "closedAt is required");
         if (closingTime.isBefore(openedAt)) {
             throw new InvalidEntityStateException("Queue closing time cannot precede opening time");
@@ -95,6 +173,19 @@ public class QueueSession extends BaseEntity {
 
     public boolean isOpen() {
         return status == QueueSessionStatus.OPEN;
+    }
+
+    public boolean isActive() {
+        return status == QueueSessionStatus.CREATED
+                || status == QueueSessionStatus.OPEN
+                || status == QueueSessionStatus.PAUSED;
+    }
+
+    public void archive() {
+        if (status != QueueSessionStatus.CLOSED) {
+            throw new InvalidEntityStateException("Only a closed queue session can be archived");
+        }
+        status = QueueSessionStatus.ARCHIVED;
     }
 
     public void setCurrentToken(QueueToken token) {

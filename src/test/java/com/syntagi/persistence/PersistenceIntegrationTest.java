@@ -13,9 +13,11 @@ import com.syntagi.business.repository.BusinessRepository;
 import com.syntagi.customer.entity.Customer;
 import com.syntagi.customer.repository.CustomerRepository;
 import com.syntagi.queue.entity.QueueSession;
+import com.syntagi.queue.entity.QueueConfiguration;
 import com.syntagi.queue.entity.QueueToken;
 import com.syntagi.queue.enums.QueueTokenSourceType;
 import com.syntagi.queue.repository.QueueSessionRepository;
+import com.syntagi.queue.repository.QueueConfigurationRepository;
 import com.syntagi.queue.repository.QueueTokenRepository;
 import com.syntagi.servicecatalog.entity.BusinessService;
 import com.syntagi.servicecatalog.enums.ServiceMode;
@@ -66,6 +68,7 @@ class PersistenceIntegrationTest {
     private final AppointmentSlotRepository appointmentSlotRepository;
     private final AppointmentRepository appointmentRepository;
     private final QueueSessionRepository queueSessionRepository;
+    private final QueueConfigurationRepository queueConfigurationRepository;
     private final QueueTokenRepository queueTokenRepository;
     private final EntityManager entityManager;
     private final Flyway flyway;
@@ -79,6 +82,7 @@ class PersistenceIntegrationTest {
             AppointmentSlotRepository appointmentSlotRepository,
             AppointmentRepository appointmentRepository,
             QueueSessionRepository queueSessionRepository,
+            QueueConfigurationRepository queueConfigurationRepository,
             QueueTokenRepository queueTokenRepository,
             EntityManager entityManager,
             Flyway flyway) {
@@ -89,6 +93,7 @@ class PersistenceIntegrationTest {
         this.appointmentSlotRepository = appointmentSlotRepository;
         this.appointmentRepository = appointmentRepository;
         this.queueSessionRepository = queueSessionRepository;
+        this.queueConfigurationRepository = queueConfigurationRepository;
         this.queueTokenRepository = queueTokenRepository;
         this.entityManager = entityManager;
         this.flyway = flyway;
@@ -166,10 +171,10 @@ class PersistenceIntegrationTest {
         Fixture fixture = createFixture("session-unique");
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         queueSessionRepository.saveAndFlush(new QueueSession(
-                fixture.business(), fixture.service(), null, fixture.date(), now));
+                fixture.queue(), fixture.business(), fixture.service(), null, fixture.date(), now));
 
         assertThatThrownBy(() -> queueSessionRepository.saveAndFlush(new QueueSession(
-                        fixture.business(), fixture.service(), null, fixture.date(), now)))
+                        fixture.queue(), fixture.business(), fixture.service(), null, fixture.date(), now)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
@@ -177,6 +182,7 @@ class PersistenceIntegrationTest {
     void queueSessionCanBeLoadedWithPessimisticWriteLock() {
         Fixture fixture = createFixture("session-lock");
         QueueSession session = queueSessionRepository.saveAndFlush(new QueueSession(
+                fixture.queue(),
                 fixture.business(),
                 fixture.service(),
                 null,
@@ -195,6 +201,7 @@ class PersistenceIntegrationTest {
         Appointment appointment = appointmentRepository.saveAndFlush(
                 newAppointment(fixture, "BOOK-TOKEN", LocalTime.of(9, 0)));
         QueueSession session = queueSessionRepository.saveAndFlush(new QueueSession(
+                fixture.queue(),
                 fixture.business(),
                 fixture.service(),
                 null,
@@ -212,6 +219,7 @@ class PersistenceIntegrationTest {
     void nextTokenCandidatesUsePriorityThenQueueOrder() {
         Fixture fixture = createFixture("next-order");
         QueueSession session = queueSessionRepository.saveAndFlush(new QueueSession(
+                fixture.queue(),
                 fixture.business(),
                 fixture.service(),
                 null,
@@ -234,7 +242,7 @@ class PersistenceIntegrationTest {
 
     @Test
     void flywayAndHibernateValidateTheCompleteSchema() {
-        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("10");
+        assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("12");
         assertThat(appointmentSlotRepository.count()).isZero();
     }
 
@@ -243,9 +251,12 @@ class PersistenceIntegrationTest {
                 "Business " + key, key, "GENERIC", key.toUpperCase() + "-Q"));
         BusinessService service = businessServiceRepository.saveAndFlush(
                 new BusinessService(business, "Service", "SVC", ServiceMode.BOTH));
+        QueueConfiguration queue = new QueueConfiguration(business, service, "Service Queue");
+        queue.activate();
+        queue = queueConfigurationRepository.saveAndFlush(queue);
         Customer customer = customerRepository.saveAndFlush(
                 new Customer(business, "Customer", "9" + uniqueDigits(key), null));
-        return new Fixture(business, service, customer, LocalDate.of(2030, 1, 10));
+        return new Fixture(business, service, queue, customer, LocalDate.of(2030, 1, 10));
     }
 
     private static Appointment newAppointment(
@@ -297,6 +308,7 @@ class PersistenceIntegrationTest {
     private record Fixture(
             Business business,
             BusinessService service,
+            QueueConfiguration queue,
             Customer customer,
             LocalDate date) {
     }

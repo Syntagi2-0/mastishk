@@ -45,7 +45,10 @@ class QueueTokenTest {
                 new BusinessService(business, "Haircut", "HAIRCUT", ServiceMode.BOTH);
         Customer customer = new Customer(business, "Customer", "9000000000", null);
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        QueueSession session = new QueueSession(business, service, null, LocalDate.now(), now);
+        QueueConfiguration queue = new QueueConfiguration(business, service, "Haircut Queue");
+        queue.activate();
+        QueueSession session = new QueueSession(
+                queue, business, service, null, LocalDate.now(), now);
         return new QueueToken(
                 session,
                 business,

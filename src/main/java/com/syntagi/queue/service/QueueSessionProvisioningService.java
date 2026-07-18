@@ -1,8 +1,11 @@
 package com.syntagi.queue.service;
 
 import com.syntagi.queue.entity.QueueSession;
+import com.syntagi.queue.entity.QueueConfiguration;
+import com.syntagi.queue.repository.QueueConfigurationRepository;
 import com.syntagi.queue.repository.QueueSessionRepository;
 import com.syntagi.servicecatalog.entity.ServiceSchedule;
+import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
 import com.syntagi.servicecatalog.repository.ServiceScheduleRepository;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -25,16 +28,22 @@ public class QueueSessionProvisioningService {
             QueueSessionProvisioningService.class);
 
     private final ServiceScheduleRepository scheduleRepository;
+    private final BusinessServiceRepository serviceRepository;
     private final QueueSessionRepository sessionRepository;
+    private final QueueConfigurationRepository queueRepository;
     private final TransactionTemplate transactionTemplate;
     private final AppointmentQueueTokenCoordinator appointmentTokenCoordinator;
 
     public QueueSessionProvisioningService(
             ServiceScheduleRepository scheduleRepository,
+            BusinessServiceRepository serviceRepository,
+            QueueConfigurationRepository queueRepository,
             QueueSessionRepository sessionRepository,
             PlatformTransactionManager transactionManager,
             AppointmentQueueTokenCoordinator appointmentTokenCoordinator) {
         this.scheduleRepository = scheduleRepository;
+        this.serviceRepository = serviceRepository;
+        this.queueRepository = queueRepository;
         this.sessionRepository = sessionRepository;
         this.appointmentTokenCoordinator = appointmentTokenCoordinator;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -50,13 +59,28 @@ public class QueueSessionProvisioningService {
             }
             try {
                 Boolean wasCreated = transactionTemplate.execute(status -> {
-                    if (sessionRepository.existsByBusinessServiceIdAndBusinessDate(
-                            schedule.getBusinessService().getId(), due.businessDate())) {
+                    var service = serviceRepository.findByIdAndBusinessIdForUpdate(
+                                    schedule.getBusinessService().getId(),
+                                    schedule.getBusinessService().getBusiness().getId())
+                            .orElseThrow();
+                    QueueConfiguration queue = queueRepository
+                            .findByBusinessServiceIdForUpdate(service.getId())
+                            .orElseGet(() -> {
+                                QueueConfiguration createdQueue = new QueueConfiguration(
+                                        service.getBusiness(), service, service.getName());
+                                createdQueue.activate();
+                                return queueRepository.saveAndFlush(createdQueue);
+                            });
+                    if (!queue.isActive()
+                            || sessionRepository.existsActiveByQueueId(queue.getId())
+                            || sessionRepository.existsByQueueIdAndBusinessDate(
+                                    queue.getId(), due.businessDate())) {
                         return false;
                     }
                     QueueSession session = sessionRepository.saveAndFlush(new QueueSession(
-                            schedule.getBusinessService().getBusiness(),
-                            schedule.getBusinessService(),
+                            queue,
+                            service.getBusiness(),
+                            service,
                             schedule,
                             due.businessDate(),
                             now.atOffset(ZoneOffset.UTC)));

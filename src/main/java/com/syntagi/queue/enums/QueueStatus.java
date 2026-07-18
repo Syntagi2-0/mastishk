@@ -1,8 +1,8 @@
 package com.syntagi.queue.enums;
 
-public enum QueueSessionStatus {
-    CREATED,
-    OPEN,
+public enum QueueStatus {
+    DRAFT,
+    ACTIVE,
     PAUSED,
     CLOSED,
     ARCHIVED

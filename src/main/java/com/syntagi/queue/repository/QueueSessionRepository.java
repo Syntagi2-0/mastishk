@@ -14,11 +14,11 @@ import org.springframework.data.repository.query.Param;
 
 public interface QueueSessionRepository extends JpaRepository<QueueSession, UUID> {
 
-    @EntityGraph(attributePaths = {"business", "businessService", "serviceSchedule", "currentToken"})
+    @EntityGraph(attributePaths = {"queue", "business", "businessService", "serviceSchedule", "currentToken"})
     Optional<QueueSession> findByBusinessServiceIdAndBusinessDate(
             UUID businessServiceId, LocalDate businessDate);
 
-    @EntityGraph(attributePaths = {"businessService", "currentToken"})
+    @EntityGraph(attributePaths = {"queue", "businessService", "currentToken"})
     List<QueueSession> findByBusinessIdAndBusinessDate(UUID businessId, LocalDate businessDate);
 
     @Query("""
@@ -33,8 +33,21 @@ public interface QueueSessionRepository extends JpaRepository<QueueSession, UUID
     boolean existsByBusinessServiceIdAndBusinessDate(
             UUID businessServiceId, LocalDate businessDate);
 
+    boolean existsByQueueIdAndBusinessDate(UUID queueId, LocalDate businessDate);
+
+    @Query("""
+            select (count(qs) > 0) from QueueSession qs
+            where qs.queue.id = :queueId
+              and qs.status in (
+                com.syntagi.queue.enums.QueueSessionStatus.CREATED,
+                com.syntagi.queue.enums.QueueSessionStatus.OPEN,
+                com.syntagi.queue.enums.QueueSessionStatus.PAUSED
+              )
+            """)
+    boolean existsActiveByQueueId(@Param("queueId") UUID queueId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select qs from QueueSession qs where qs.id = :id")
+    @Query("select qs from QueueSession qs join fetch qs.queue where qs.id = :id")
     Optional<QueueSession> findByIdForUpdate(@Param("id") UUID id);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -49,7 +62,7 @@ public interface QueueSessionRepository extends JpaRepository<QueueSession, UUID
             @Param("serviceId") UUID serviceId,
             @Param("businessDate") LocalDate businessDate);
 
-    @EntityGraph(attributePaths = {"businessService", "currentToken", "currentToken.customer"})
+    @EntityGraph(attributePaths = {"queue", "businessService", "currentToken", "currentToken.customer"})
     Optional<QueueSession> findByBusinessIdAndBusinessServiceIdAndBusinessDate(
             UUID businessId, UUID businessServiceId, LocalDate businessDate);
 }

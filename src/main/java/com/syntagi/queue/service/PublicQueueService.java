@@ -68,6 +68,7 @@ public class PublicQueueService {
         LocalDate businessDate = timeService.businessDate(business);
         QueueSession session = sessionRepository.findTodayForUpdate(
                         business.getId(), service.getId(), businessDate)
+                .filter(candidate -> candidate.getQueue().isActive())
                 .filter(QueueSession::isOpen)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.QUEUE_SESSION_NOT_FOUND));
         if (session.getServiceSchedule() != null

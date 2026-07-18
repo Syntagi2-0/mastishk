@@ -12,12 +12,16 @@ import com.syntagi.auth.dto.request.RegisterOwnerRequest;
 import com.syntagi.customer.entity.Customer;
 import com.syntagi.customer.repository.CustomerRepository;
 import com.syntagi.queue.dto.request.WalkInRequest;
+import com.syntagi.queue.dto.request.CreateQueueSessionRequest;
+import com.syntagi.queue.dto.request.QueueUpsertRequest;
+import com.syntagi.queue.entity.QueueConfiguration;
 import com.syntagi.queue.entity.QueueSession;
 import com.syntagi.queue.entity.QueueToken;
 import com.syntagi.queue.enums.QueueSessionStatus;
 import com.syntagi.queue.enums.QueueTokenSourceType;
 import com.syntagi.queue.enums.QueueTokenStatus;
 import com.syntagi.queue.repository.QueueSessionRepository;
+import com.syntagi.queue.repository.QueueConfigurationRepository;
 import com.syntagi.queue.repository.QueueTokenRepository;
 import com.syntagi.queue.service.QueueSessionProvisioningService;
 import com.syntagi.servicecatalog.dto.request.ServiceUpsertRequest;
@@ -74,6 +78,7 @@ class QueueManagementIntegrationTest {
     @Autowired private BusinessServiceRepository serviceRepository;
     @Autowired private ServiceScheduleRepository scheduleRepository;
     @Autowired private QueueSessionRepository sessionRepository;
+    @Autowired private QueueConfigurationRepository queueConfigurationRepository;
     @Autowired private QueueTokenRepository tokenRepository;
     @Autowired private CustomerRepository customerRepository;
     @Autowired private QueueSessionProvisioningService provisioningService;
@@ -93,6 +98,278 @@ class QueueManagementIntegrationTest {
         assertThat(session.getWalkInTokenCounter()).isZero();
         assertThat(session.getCurrentToken()).isNull();
         assertThat(session.getOpenedAt()).isNotNull();
+    }
+
+    @Test
+    void queueConfigurationLifecycleAndSessionPauseResumeAreEnforced() throws Exception {
+        QueueSetup setup = createScheduledQueue("configuration-lifecycle");
+        JsonNode queue = createQueueConfiguration(setup, "Front Desk");
+        String queueId = queue.path("id").asText();
+        assertThat(queue.path("status").asText()).isEqualTo("DRAFT");
+
+        mockMvc.perform(post("/api/queues/{queueId}/sessions", queueId)
+                        .header("Authorization", bearer(setup.ownerToken()))
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUEUE_NOT_ACTIVE"));
+
+        mockMvc.perform(post("/api/queues/{queueId}/activate", queueId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+
+        JsonNode session = responseData(mockMvc.perform(
+                        post("/api/queues/{queueId}/sessions", queueId)
+                                .header("Authorization", bearer(setup.ownerToken()))
+                                .contentType("application/json")
+                                .content("{}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("OPEN"))
+                .andReturn());
+        String sessionId = session.path("queueSessionId").asText();
+
+        mockMvc.perform(post("/api/queues/{queueId}/sessions", queueId)
+                        .header("Authorization", bearer(setup.ownerToken()))
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DUPLICATE_QUEUE_SESSION"));
+
+        mockMvc.perform(post("/api/queue-sessions/{sessionId}/pause", sessionId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PAUSED"));
+        mockMvc.perform(post("/api/queue/next")
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUEUE_SESSION_CLOSED"));
+        mockMvc.perform(post("/api/public/businesses/{code}/walk-in", setup.publicQueueCode())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new WalkInRequest(
+                                setup.service().getId(), "Paused", "+919911110001"))))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(post("/api/queue-sessions/{sessionId}/resume", sessionId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("OPEN"));
+        walkIn(setup, "Open Customer", "+919911110002");
+
+        mockMvc.perform(post("/api/queues/{queueId}/archive", queueId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("ACTIVE_QUEUE_SESSION_EXISTS"));
+        mockMvc.perform(post("/api/queue-sessions/{sessionId}/close", sessionId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/queues/{queueId}/close", queueId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/queues/{queueId}/archive", queueId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("ARCHIVED"));
+    }
+
+    @Test
+    void queueConfigurationRejectsForeignAndAppointmentOnlyServices() throws Exception {
+        QueueSetup first = createScheduledQueue("queue-owner-one");
+        QueueSetup second = createScheduledQueue("queue-owner-two");
+        mockMvc.perform(post("/api/queues")
+                        .header("Authorization", bearer(first.ownerToken()))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new QueueUpsertRequest(
+                                "Foreign Queue", second.service().getId()))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CROSS_BUSINESS_ACCESS_FORBIDDEN"));
+
+        JsonNode secondQueue = createQueueConfiguration(second, "Second Business Queue");
+        mockMvc.perform(get("/api/queues/{queueId}", secondQueue.path("id").asText())
+                        .header("Authorization", bearer(first.ownerToken())))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CROSS_BUSINESS_ACCESS_FORBIDDEN"));
+
+        scheduleRepository.deleteAll(
+                scheduleRepository.findByBusinessServiceIdAndActiveTrue(first.service().getId()));
+        first.service().updateMode(ServiceMode.APPOINTMENT);
+        serviceRepository.saveAndFlush(first.service());
+        mockMvc.perform(post("/api/queues")
+                        .header("Authorization", bearer(first.ownerToken()))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new QueueUpsertRequest(
+                                "Appointments", first.service().getId()))))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("WALK_IN_NOT_SUPPORTED"));
+        deleteSchedules(second);
+    }
+
+    @Test
+    void createdSessionDoesNotAcceptCustomers() throws Exception {
+        QueueSetup setup = createScheduledQueue("created-session");
+        JsonNode createdQueue = createQueueConfiguration(setup, "Created State");
+        UUID queueId = UUID.fromString(createdQueue.path("id").asText());
+        mockMvc.perform(post("/api/queues/{queueId}/activate", queueId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk());
+        QueueConfiguration queue = queueConfigurationRepository.findById(queueId).orElseThrow();
+        LocalDate date = LocalDate.now(ZoneId.of(setup.service().getBusiness().getTimezone()));
+        sessionRepository.saveAndFlush(QueueSession.created(
+                queue, null, date, LocalTime.of(9, 0), LocalTime.of(18, 0),
+                OffsetDateTime.now(ZoneOffset.UTC)));
+
+        mockMvc.perform(post("/api/public/businesses/{code}/walk-in", setup.publicQueueCode())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new WalkInRequest(
+                                setup.service().getId(), "Created", "+919911110003"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUEUE_SESSION_NOT_FOUND"));
+    }
+
+    @Test
+    void ownerCanCreateTodaysQueueManuallyUsingScheduleDefaults() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-scheduled");
+
+        mockMvc.perform(post("/api/queue-sessions")
+                        .header("Authorization", bearer(setup.ownerToken()))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(
+                                new CreateQueueSessionRequest(setup.service().getId(), null, null))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.queueSessionId").isNotEmpty())
+                .andExpect(jsonPath("$.data.serviceId").value(setup.service().getId().toString()))
+                .andExpect(jsonPath("$.data.status").value("OPEN"))
+                .andExpect(jsonPath("$.data.openingTime").value("00:00:00"))
+                .andExpect(jsonPath("$.data.closingTime").value("23:59:59"));
+
+        QueueSession session = findSession(setup);
+        assertThat(session.getServiceSchedule()).isNotNull();
+        assertThat(session.getStatus()).isEqualTo(QueueSessionStatus.OPEN);
+    }
+
+    @Test
+    void manualQueueCreationPreventsDuplicates() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-duplicate");
+        CreateQueueSessionRequest request =
+                new CreateQueueSessionRequest(setup.service().getId(), null, null);
+
+        createQueueSession(setup, request).andExpect(status().isCreated());
+        createQueueSession(setup, request)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("DUPLICATE_QUEUE_SESSION"));
+    }
+
+    @Test
+    void manualQueueCreationRejectsServiceFromAnotherBusiness() throws Exception {
+        QueueSetup first = createScheduledQueue("manual-owner-first");
+        QueueSetup second = createScheduledQueue("manual-owner-second");
+
+        mockMvc.perform(post("/api/queue-sessions")
+                        .header("Authorization", bearer(first.ownerToken()))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new CreateQueueSessionRequest(
+                                second.service().getId(), null, null))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("CROSS_BUSINESS_ACCESS_FORBIDDEN"));
+        deleteSchedules(first);
+        deleteSchedules(second);
+    }
+
+    @Test
+    void manualQueueCreationRejectsAppointmentOnlyService() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-appointment-only");
+        scheduleRepository.deleteAll(
+                scheduleRepository.findByBusinessServiceIdAndActiveTrue(setup.service().getId()));
+        setup.service().updateMode(ServiceMode.APPOINTMENT);
+        serviceRepository.saveAndFlush(setup.service());
+
+        createQueueSession(
+                        setup,
+                        new CreateQueueSessionRequest(setup.service().getId(), null, null))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("WALK_IN_NOT_SUPPORTED"));
+    }
+
+    @Test
+    void manualQueueCanBeCreatedWithoutSchedule() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-no-schedule");
+        scheduleRepository.deleteAll(
+                scheduleRepository.findByBusinessServiceIdAndActiveTrue(setup.service().getId()));
+
+        createQueueSession(
+                        setup,
+                        new CreateQueueSessionRequest(setup.service().getId(), null, null))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.status").value("OPEN"))
+                .andExpect(jsonPath("$.data.closingTime").doesNotExist());
+
+        assertThat(findSession(setup).getServiceSchedule()).isNull();
+    }
+
+    @Test
+    void manualQueueAcceptsOptionalOperatingTimes() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-times");
+
+        createQueueSession(
+                        setup,
+                        new CreateQueueSessionRequest(
+                                setup.service().getId(), LocalTime.of(9, 30), LocalTime.of(18, 0)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.openingTime").value("09:30:00"))
+                .andExpect(jsonPath("$.data.closingTime").value("18:00:00"));
+
+        QueueSession session = findSession(setup);
+        assertThat(session.getOpeningTime()).isEqualTo(LocalTime.of(9, 30));
+        assertThat(session.getClosingTime()).isEqualTo(LocalTime.of(18, 0));
+        assertThat(session.getServiceSchedule()).isNull();
+    }
+
+    @Test
+    void manualQueueRejectsInvalidOperatingTimeRange() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-invalid-times");
+
+        createQueueSession(
+                        setup,
+                        new CreateQueueSessionRequest(
+                                setup.service().getId(), LocalTime.of(18, 0), LocalTime.of(9, 30)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_TIME_RANGE"));
+        assertThat(sessionRepository.findByBusinessServiceIdAndBusinessDate(
+                        setup.service().getId(),
+                        LocalDate.now(ZoneId.of(setup.service().getBusiness().getTimezone()))))
+                .isEmpty();
+        deleteSchedules(setup);
+    }
+
+    @Test
+    void closingQueueIsExplicitAndPreventsFurtherWalkIns() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-close");
+        JsonNode created = responseData(createQueueSession(
+                        setup,
+                        new CreateQueueSessionRequest(setup.service().getId(), null, null))
+                .andExpect(status().isCreated())
+                .andReturn());
+        String sessionId = created.path("queueSessionId").asText();
+
+        mockMvc.perform(post("/api/queue-sessions/{queueSessionId}/close", sessionId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CLOSED"))
+                .andExpect(jsonPath("$.data.closedAt").isNotEmpty());
+
+        mockMvc.perform(post(
+                        "/api/public/businesses/{code}/walk-in", setup.publicQueueCode())
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new WalkInRequest(
+                                setup.service().getId(), "Closed Customer", "+919900009999"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUEUE_SESSION_NOT_FOUND"));
+
+        mockMvc.perform(post("/api/queue-sessions/{queueSessionId}/close", sessionId)
+                        .header("Authorization", bearer(setup.ownerToken())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("QUEUE_SESSION_CLOSED"))
+                .andExpect(jsonPath("$.message").value("Queue session is already closed"));
     }
 
     @Test
@@ -413,6 +690,29 @@ class QueueManagementIntegrationTest {
                         .header("Authorization", bearer(setup.ownerToken())))
                 .andExpect(status().isOk())
                 .andReturn());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions createQueueSession(
+            QueueSetup setup, CreateQueueSessionRequest request) throws Exception {
+        return mockMvc.perform(post("/api/queue-sessions")
+                .header("Authorization", bearer(setup.ownerToken()))
+                .contentType("application/json")
+                .content(objectMapper.writeValueAsString(request)));
+    }
+
+    private JsonNode createQueueConfiguration(QueueSetup setup, String name) throws Exception {
+        return responseData(mockMvc.perform(post("/api/queues")
+                        .header("Authorization", bearer(setup.ownerToken()))
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(
+                                new QueueUpsertRequest(name, setup.service().getId()))))
+                .andExpect(status().isCreated())
+                .andReturn());
+    }
+
+    private void deleteSchedules(QueueSetup setup) {
+        scheduleRepository.deleteAll(
+                scheduleRepository.findByBusinessServiceIdAndActiveTrue(setup.service().getId()));
     }
 
     private QueueSession findSession(QueueSetup setup) {

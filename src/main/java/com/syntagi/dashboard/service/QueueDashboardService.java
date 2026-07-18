@@ -32,6 +32,10 @@ public class QueueDashboardService {
         AuthenticatedBusinessContext context = contextService.current();
         QueueSession session = sessionAccessService.findToday(context.business(), serviceId);
         return new QueueDashboardResponse(
+                session.getId(),
+                session.getQueue().getId(),
+                session.getQueue().getName(),
+                session.getQueue().getStatus(),
                 session.getBusinessService().getId(),
                 session.getBusinessService().getName(),
                 session.getStatus(),

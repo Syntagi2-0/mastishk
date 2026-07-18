@@ -33,6 +33,15 @@ public enum ErrorCode {
     CROSS_BUSINESS_ACCESS_FORBIDDEN(
             HttpStatus.FORBIDDEN, "Resource belongs to another business"),
     WALK_IN_NOT_SUPPORTED(HttpStatus.BAD_REQUEST, "Walk-in queueing is not enabled for this service"),
+    SERVICE_INACTIVE(HttpStatus.BAD_REQUEST, "Service is inactive"),
+    DUPLICATE_QUEUE_SESSION(
+            HttpStatus.CONFLICT, "A queue session already exists for this service today"),
+    QUEUE_NOT_FOUND(HttpStatus.NOT_FOUND, "Queue configuration was not found"),
+    DUPLICATE_QUEUE(HttpStatus.CONFLICT, "A queue already exists for this service"),
+    QUEUE_NOT_ACTIVE(HttpStatus.CONFLICT, "Queue configuration is not active"),
+    INVALID_QUEUE_TRANSITION(HttpStatus.CONFLICT, "Queue status transition is invalid"),
+    ACTIVE_QUEUE_SESSION_EXISTS(
+            HttpStatus.CONFLICT, "Queue has an active session"),
     QUEUE_SESSION_NOT_FOUND(HttpStatus.CONFLICT, "No open queue session is available"),
     QUEUE_SERVICE_REQUIRED(
             HttpStatus.BAD_REQUEST, "serviceId is required when multiple queues are active"),
