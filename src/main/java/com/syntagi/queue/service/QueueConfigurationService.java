@@ -70,7 +70,6 @@ public class QueueConfigurationService {
         return response(findScoped(queueId, businessId));
     }
 
-    @Transactional(readOnly = true)
     public Map<String, String> persistenceDiagnostic() {
         contextService.requireOwner();
         try {
