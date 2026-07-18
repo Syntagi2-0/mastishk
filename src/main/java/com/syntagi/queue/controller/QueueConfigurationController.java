@@ -9,7 +9,6 @@ import com.syntagi.queue.service.QueueConfigurationService;
 import com.syntagi.queue.service.QueueSessionLifecycleService;
 import jakarta.validation.Valid;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -50,11 +49,6 @@ public class QueueConfigurationController {
     @GetMapping("/{queueId}")
     public ApiResponse<QueueConfigurationResponse> get(@PathVariable UUID queueId) {
         return ApiResponse.success(queueService.get(queueId));
-    }
-
-    @GetMapping("/diagnostics/persistence")
-    public ApiResponse<Map<String, String>> persistenceDiagnostic() {
-        return ApiResponse.success(queueService.persistenceDiagnostic());
     }
 
     @PutMapping("/{queueId}")

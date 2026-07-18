@@ -13,7 +13,6 @@ import com.syntagi.queue.repository.QueueSessionRepository;
 import com.syntagi.servicecatalog.entity.BusinessService;
 import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
@@ -68,21 +67,6 @@ public class QueueConfigurationService {
     public QueueConfigurationResponse get(UUID queueId) {
         UUID businessId = contextService.current().business().getId();
         return response(findScoped(queueId, businessId));
-    }
-
-    public Map<String, String> persistenceDiagnostic() {
-        contextService.requireOwner();
-        try {
-            queueRepository.count();
-            return Map.of("status", "OK");
-        } catch (RuntimeException exception) {
-            Throwable root = exception;
-            while (root.getCause() != null) root = root.getCause();
-            return Map.of(
-                    "exception", exception.getClass().getName(),
-                    "rootException", root.getClass().getName(),
-                    "rootMessage", String.valueOf(root.getMessage()));
-        }
     }
 
     @Transactional
