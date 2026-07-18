@@ -20,7 +20,7 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "queues")
+@Table(name = "queues", schema = "public")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class QueueConfiguration extends BaseEntity {
 
