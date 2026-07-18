@@ -3,7 +3,7 @@ spring:
     activate:
       on-profile: prod
   datasource:
-    url: ${DB_URL}
+    url: ${SPRING_DATASOURCE_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     hikari:
@@ -12,6 +12,8 @@ spring:
       connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:30000}
       validation-timeout: ${DB_VALIDATION_TIMEOUT_MS:5000}
       max-lifetime: ${DB_MAX_LIFETIME_MS:1800000}
+      data-source-properties:
+        sslmode: require
   jpa:
     show-sql: false
     properties:
@@ -40,6 +42,7 @@ springdoc:
     enabled: false
 
 server:
+  port: ${PORT:8080}
   tomcat:
     threads:
       max: ${SERVER_MAX_THREADS:200}

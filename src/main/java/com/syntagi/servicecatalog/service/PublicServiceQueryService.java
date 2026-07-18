@@ -13,7 +13,12 @@ import com.syntagi.queue.repository.QueueSessionRepository;
 import com.syntagi.queue.service.QueueTimeService;
 import com.syntagi.servicecatalog.mapper.ServiceCatalogMapper;
 import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
+import com.syntagi.servicecatalog.entity.BusinessService;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,11 +48,8 @@ public class PublicServiceQueryService {
     public PublicBusinessResponse business(String publicQueueCode) {
         Business business = activeBusiness(publicQueueCode);
         List<PublicServiceResponse> services = activeServices(business);
-        QueueSessionStatus queueStatus = queueSessionRepository
-                .findByBusinessIdAndBusinessDate(
-                        business.getId(), queueTimeService.businessDate(business))
-                .stream()
-                .anyMatch(QueueSession::isOpen)
+        QueueSessionStatus queueStatus = services.stream()
+                .anyMatch(service -> service.queueStatus() == QueueSessionStatus.OPEN)
                 ? QueueSessionStatus.OPEN : QueueSessionStatus.CLOSED;
         return new PublicBusinessResponse(
                 business.getName(), business.getBusinessType(), queueStatus, services);
@@ -60,9 +62,25 @@ public class PublicServiceQueryService {
     }
 
     private List<PublicServiceResponse> activeServices(Business business) {
-        return serviceRepository
+        List<BusinessService> services = serviceRepository
                 .findByBusinessIdAndActiveTrueOrderByDisplayOrderAscNameAsc(business.getId())
-                .stream().map(mapper::toPublicServiceResponse).toList();
+                .stream().toList();
+        Map<UUID, QueueSession> sessionsByService = queueSessionRepository
+                .findByBusinessIdAndBusinessDate(
+                        business.getId(), queueTimeService.businessDate(business))
+                .stream()
+                .collect(Collectors.toMap(
+                        session -> session.getBusinessService().getId(),
+                        Function.identity()));
+        return services.stream()
+                .map(service -> {
+                    QueueSession session = sessionsByService.get(service.getId());
+                    QueueSessionStatus status = session == null
+                            ? QueueSessionStatus.CLOSED
+                            : session.getStatus();
+                    return mapper.toPublicServiceResponse(service, status);
+                })
+                .toList();
     }
 
     @Transactional(readOnly = true)

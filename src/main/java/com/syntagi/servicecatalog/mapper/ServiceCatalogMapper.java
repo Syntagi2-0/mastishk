@@ -5,6 +5,7 @@ import com.syntagi.servicecatalog.dto.response.ScheduleResponse;
 import com.syntagi.servicecatalog.dto.response.ServiceResponse;
 import com.syntagi.servicecatalog.entity.BusinessService;
 import com.syntagi.servicecatalog.entity.ServiceSchedule;
+import com.syntagi.queue.enums.QueueSessionStatus;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -26,7 +27,8 @@ public class ServiceCatalogMapper {
                 service.getDisplayOrder());
     }
 
-    public PublicServiceResponse toPublicServiceResponse(BusinessService service) {
+    public PublicServiceResponse toPublicServiceResponse(
+            BusinessService service, QueueSessionStatus queueStatus) {
         if (service == null) {
             return null;
         }
@@ -37,7 +39,8 @@ public class ServiceCatalogMapper {
                 service.getServiceMode(),
                 service.getExpectedDurationMinutes(),
                 service.supportsWalkIn(),
-                service.supportsAppointment());
+                service.supportsAppointment(),
+                queueStatus);
     }
 
     public ScheduleResponse toScheduleResponse(ServiceSchedule schedule) {

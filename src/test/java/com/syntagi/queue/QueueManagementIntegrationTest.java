@@ -242,7 +242,8 @@ class QueueManagementIntegrationTest {
         walkIn(setup, "Live Second", "+919900010002");
         advance(setup);
 
-        mockMvc.perform(get("/api/public/queue/W002"))
+        mockMvc.perform(get("/api/public/queue/W002")
+                        .param("mobile", "+919900010002"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.token").value("W002"))
                 .andExpect(jsonPath("$.data.currentToken").value("W001"))
@@ -260,6 +261,11 @@ class QueueManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.customerId").doesNotExist())
                 .andExpect(jsonPath("$.data.customerName").doesNotExist())
                 .andExpect(jsonPath("$.data.mobile").doesNotExist());
+
+        mockMvc.perform(get("/api/public/queue/W002")
+                        .param("mobile", "+919900010099"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("QUEUE_TOKEN_NOT_FOUND"));
     }
 
     @Test
@@ -305,6 +311,7 @@ class QueueManagementIntegrationTest {
                 .andExpect(jsonPath("$.data.queueStatus").value("OPEN"))
                 .andExpect(jsonPath("$.data.availableServices[0].serviceId")
                         .value(first.service().getId().toString()))
+                .andExpect(jsonPath("$.data.availableServices[0].queueStatus").value("OPEN"))
                 .andExpect(jsonPath("$.data.internalId").doesNotExist());
 
         mockMvc.perform(get("/api/customers")

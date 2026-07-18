@@ -110,10 +110,10 @@ public class PublicQueueService {
     }
 
     @Transactional(readOnly = true)
-    public LiveQueueResponse getLiveQueue(String tokenDisplay) {
+    public LiveQueueResponse getLiveQueue(String tokenDisplay, String mobile) {
         QueueToken token = tokenRepository
-                .findFirstByTokenDisplayOrderByJoinedAtDesc(
-                        tokenDisplay.trim().toUpperCase(Locale.ROOT))
+                .findFirstByTokenDisplayAndCustomerMobileOrderByJoinedAtDesc(
+                        tokenDisplay.trim().toUpperCase(Locale.ROOT), mobile.trim())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.QUEUE_TOKEN_NOT_FOUND));
         QueueSession session = token.getQueueSession();
         List<QueueToken> waiting = orderingService.waitingTokens(session.getId());

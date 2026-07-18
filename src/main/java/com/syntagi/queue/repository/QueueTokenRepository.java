@@ -74,11 +74,6 @@ public interface QueueTokenRepository extends JpaRepository<QueueToken, UUID> {
     List<QueueToken> findNextCandidates(
             @Param("queueSessionId") UUID queueSessionId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {
-        "queueSession", "queueSession.currentToken", "business", "businessService"
-    })
-    Optional<QueueToken> findFirstByTokenDisplayOrderByJoinedAtDesc(String tokenDisplay);
-
     long countByQueueSessionIdAndStatus(UUID queueSessionId, QueueTokenStatus status);
 
     @EntityGraph(attributePaths = {"customer", "business"})

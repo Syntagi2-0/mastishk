@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: syntagi-backend
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /actuator/health/readiness
+    maxShutdownDelaySeconds: 30
+    autoDeployTrigger: commit
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DATABASE_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ALLOWED_ORIGIN_PATTERNS
+        value: https://syntagi-business.web.app,https://syntagi-customer.web.app
+      - key: DB_POOL_SIZE
+        value: 5
+      - key: DB_MIN_IDLE
+        value: 1
