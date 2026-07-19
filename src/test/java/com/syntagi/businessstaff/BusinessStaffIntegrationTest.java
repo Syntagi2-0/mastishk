@@ -308,12 +308,9 @@ class BusinessStaffIntegrationTest {
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(new RegisterOwnerRequest(
                                 "Owner " + key,
-                                email,
-                                "+919700000001",
-                                "OwnerPassword123",
                                 businessName,
-                                "CLINIC",
-                                "IN",
+                                email,
+                                "OwnerPassword123",
                                 "Asia/Kolkata"))))
                 .andExpect(status().isCreated())
                 .andReturn();

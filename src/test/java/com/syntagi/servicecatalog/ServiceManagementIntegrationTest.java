@@ -12,13 +12,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.syntagi.auth.dto.request.LoginRequest;
 import com.syntagi.auth.dto.request.RegisterOwnerRequest;
+import com.syntagi.queue.enums.QueueStatus;
+import com.syntagi.queue.repository.QueueConfigurationRepository;
+import com.syntagi.queue.repository.QueueSessionRepository;
 import com.syntagi.servicecatalog.dto.request.ScheduleStatusRequest;
 import com.syntagi.servicecatalog.dto.request.ScheduleUpsertRequest;
 import com.syntagi.servicecatalog.dto.request.ServiceStatusRequest;
 import com.syntagi.servicecatalog.dto.request.ServiceUpsertRequest;
 import com.syntagi.servicecatalog.enums.ServiceMode;
+import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
 import com.syntagi.staff.dto.request.CreateStaffRequest;
 import java.time.LocalTime;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -53,6 +59,9 @@ class ServiceManagementIntegrationTest {
 
     private final MockMvc mockMvc;
     private final ObjectMapper objectMapper;
+    @Autowired private QueueSessionRepository queueSessionRepository;
+    @Autowired private QueueConfigurationRepository queueConfigurationRepository;
+    @Autowired private BusinessServiceRepository businessServiceRepository;
 
     @Autowired
     ServiceManagementIntegrationTest(MockMvc mockMvc, ObjectMapper objectMapper) {
@@ -413,16 +422,25 @@ class ServiceManagementIntegrationTest {
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(new RegisterOwnerRequest(
                                 "Owner " + key,
-                                email,
-                                "+919700000001",
-                                "OwnerPassword123",
                                 "Business " + key + " " + UUID.randomUUID(),
-                                "CLINIC",
-                                "IN",
+                                email,
+                                "OwnerPassword123",
                                 "Asia/Kolkata"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode data = responseData(result);
+        UUID businessId = UUID.fromString(data.path("business").path("id").asText());
+        queueSessionRepository.deleteAll(queueSessionRepository.findByBusinessIdAndBusinessDate(
+                businessId, LocalDate.now(ZoneId.of("Asia/Kolkata"))));
+        queueSessionRepository.flush();
+        queueConfigurationRepository.deleteAll(
+                queueConfigurationRepository.findByBusinessIdAndStatusNotOrderByNameAsc(
+                        businessId, QueueStatus.ARCHIVED));
+        queueConfigurationRepository.flush();
+        businessServiceRepository.deleteAll(
+                businessServiceRepository.findByBusinessIdAndActiveTrueOrderByDisplayOrderAscNameAsc(
+                        businessId));
+        businessServiceRepository.flush();
         return new OwnerSession(
                 data.path("accessToken").asText(),
                 data.path("business").path("publicQueueCode").asText());
