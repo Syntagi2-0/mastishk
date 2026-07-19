@@ -312,7 +312,9 @@ class BusinessStaffIntegrationTest {
                                 "+919700000001",
                                 "OwnerPassword123",
                                 businessName,
-                                "CLINIC"))))
+                                "CLINIC",
+                                "IN",
+                                "Asia/Kolkata"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode data = responseData(result);

@@ -30,6 +30,8 @@ public interface QueueConfigurationRepository
 
     boolean existsByBusinessIdAndBusinessServiceId(UUID businessId, UUID businessServiceId);
 
+    boolean existsByBusinessId(UUID businessId);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select q from QueueConfiguration q

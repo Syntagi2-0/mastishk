@@ -12,5 +12,11 @@ public record RegisterOwnerRequest(
                 String mobile,
         @NotBlank @Size(min = 8, max = 72) String password,
         @NotBlank @Size(max = 200) String businessName,
-        @NotBlank @Size(max = 50) String businessType) {
+        @NotBlank @Size(max = 50) String businessType,
+        @NotBlank
+                @Pattern(
+                        regexp = "(?i)^[a-z]{2,5}$",
+                        message = "must contain between 2 and 5 letters")
+                String country,
+        @NotBlank @Size(max = 80) String timezone) {
 }

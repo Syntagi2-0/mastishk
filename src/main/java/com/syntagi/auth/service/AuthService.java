@@ -20,6 +20,8 @@ import com.syntagi.common.security.SyntagiPrincipal;
 import com.syntagi.staff.entity.BusinessUser;
 import com.syntagi.staff.repository.BusinessUserRepository;
 import java.util.Locale;
+import java.time.DateTimeException;
+import java.time.ZoneId;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -75,11 +77,14 @@ public class AuthService {
                 request.mobile(),
                 passwordEncoder.encode(request.password())));
 
-        Business business = businessRepository.save(new Business(
+        Business business = new Business(
                 request.businessName(),
                 identifierGenerator.uniqueSlug(request.businessName()),
                 request.businessType(),
-                identifierGenerator.uniquePublicQueueCode()));
+                identifierGenerator.uniquePublicQueueCode());
+        business.updateContactDetails(email, request.mobile());
+        business.updateAddress(null, null, null, null, request.country(), validTimezone(request.timezone()));
+        business = businessRepository.save(business);
 
         BusinessUser membership = businessUserRepository.saveAndFlush(
                 new BusinessUser(business, user, BusinessRole.OWNER));
@@ -170,5 +175,13 @@ public class AuthService {
 
     private static String normalizeEmail(String email) {
         return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String validTimezone(String timezone) {
+        try {
+            return ZoneId.of(timezone.trim()).getId();
+        } catch (DateTimeException exception) {
+            throw new com.syntagi.common.exception.ApplicationException(ErrorCode.INVALID_TIMEZONE);
+        }
     }
 }

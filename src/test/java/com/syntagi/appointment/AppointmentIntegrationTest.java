@@ -350,7 +350,8 @@ class AppointmentIntegrationTest {
                         .content(objectMapper.writeValueAsString(new RegisterOwnerRequest(
                                 "Owner " + key, key + UUID.randomUUID() + "@example.com",
                                 "+919700000001", "OwnerPassword123",
-                                "Business " + key + UUID.randomUUID(), "CLINIC"))))
+                                "Business " + key + UUID.randomUUID(), "CLINIC",
+                                "IN", "Asia/Kolkata"))))
                 .andExpect(status().isCreated()).andReturn());
         return new Owner(data.path("accessToken").asText(),
                 data.path("business").path("publicQueueCode").asText());

@@ -21,12 +21,12 @@ public class BusinessController {
         this.businessProfileService = businessProfileService;
     }
 
-    @GetMapping("/me")
+    @GetMapping({"", "/me"})
     public ApiResponse<BusinessProfileResponse> getCurrentBusiness() {
         return ApiResponse.success(businessProfileService.getCurrentBusiness());
     }
 
-    @PutMapping("/me")
+    @PutMapping({"", "/me"})
     public ApiResponse<BusinessProfileResponse> updateCurrentBusiness(
             @Valid @RequestBody UpdateBusinessRequest request) {
         return ApiResponse.success(

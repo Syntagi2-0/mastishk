@@ -3,6 +3,7 @@ package com.syntagi.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -203,6 +204,88 @@ class AuthenticationIntegrationTest {
     }
 
     @Test
+    void registrationCreatesCompletedProfileWithoutCreatingAQueue() throws Exception {
+        String token = accessToken(register(uniqueEmail("onboarding-initial")));
+
+        mockMvc.perform(get("/api/business").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").isNotEmpty())
+                .andExpect(jsonPath("$.data.countryCode").value("IN"))
+                .andExpect(jsonPath("$.data.timezone").value("Asia/Kolkata"));
+
+        mockMvc.perform(get("/api/onboarding/status")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.businessCreated").value(true))
+                .andExpect(jsonPath("$.data.profileCompleted").value(true))
+                .andExpect(jsonPath("$.data.firstQueueCreated").value(false))
+                .andExpect(jsonPath("$.data.setupCompleted").value(false));
+    }
+
+    @Test
+    void ownerCanUpdateBusinessThroughCanonicalEndpoint() throws Exception {
+        MvcResult registration = register(uniqueEmail("business-update"));
+        String token = accessToken(registration);
+        String originalSlug = responseData(registration).path("business").path("slug").asText();
+        var update = java.util.Map.of(
+                "name", "Updated Clinic",
+                "businessType", "DENTAL_CLINIC",
+                "email", "contact@example.com",
+                "mobile", "+919811111111",
+                "addressLine", "1 Main Road",
+                "city", "Bengaluru",
+                "state", "Karnataka",
+                "postalCode", "560001",
+                "countryCode", "IN",
+                "timezone", "Asia/Kolkata");
+
+        mockMvc.perform(put("/api/business")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(update)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value("Updated Clinic"))
+                .andExpect(jsonPath("$.data.slug").value(originalSlug))
+                .andExpect(jsonPath("$.data.publicQueueCode").isNotEmpty());
+    }
+
+    @Test
+    void firstQueueCompletesOnlyItsOwnBusinessOnboarding() throws Exception {
+        String firstToken = accessToken(register(uniqueEmail("tenant-one")));
+        String secondToken = accessToken(register(uniqueEmail("tenant-two")));
+        String serviceId = responseData(mockMvc.perform(post("/api/services")
+                        .header("Authorization", "Bearer " + firstToken)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "name", "Walk-ins",
+                                "serviceCode", "WALKIN-" + UUID.randomUUID(),
+                                "serviceMode", "WALK_IN",
+                                "expectedDurationMinutes", 15,
+                                "displayOrder", 1))))
+                .andExpect(status().isCreated()).andReturn()).path("id").asText();
+        String queueId = responseData(mockMvc.perform(post("/api/queues")
+                        .header("Authorization", "Bearer " + firstToken)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "name", "Front desk", "serviceId", serviceId))))
+                .andExpect(status().isCreated()).andReturn()).path("id").asText();
+        mockMvc.perform(post("/api/queues/{queueId}/activate", queueId)
+                        .header("Authorization", "Bearer " + firstToken))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/onboarding/status")
+                        .header("Authorization", "Bearer " + firstToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.firstQueueCreated").value(true))
+                .andExpect(jsonPath("$.data.setupCompleted").value(true));
+        mockMvc.perform(get("/api/onboarding/status")
+                        .header("Authorization", "Bearer " + secondToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.firstQueueCreated").value(false))
+                .andExpect(jsonPath("$.data.setupCompleted").value(false));
+    }
+
+    @Test
     void registrationRollsBackWhenBusinessCreationFails() {
         String email = uniqueEmail("rollback");
         RegisterOwnerRequest request = new RegisterOwnerRequest(
@@ -211,7 +294,9 @@ class AuthenticationIntegrationTest {
                 "+919876543210",
                 "StrongPass123",
                 "Rollback Business",
-                "X".repeat(51));
+                "X".repeat(51),
+                "IN",
+                "Asia/Kolkata");
 
         assertThatThrownBy(() -> authService.registerOwner(request))
                 .isInstanceOf(DataIntegrityViolationException.class);
@@ -245,7 +330,9 @@ class AuthenticationIntegrationTest {
                 "+919876543210",
                 "StrongPass123",
                 businessName,
-                "CLINIC"));
+                "CLINIC",
+                "IN",
+                "Asia/Kolkata"));
     }
 
     private String loginJson(String email, String password) throws Exception {
@@ -255,6 +342,10 @@ class AuthenticationIntegrationTest {
     private String accessToken(MvcResult result) throws Exception {
         JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
         return response.path("data").path("accessToken").asText();
+    }
+
+    private JsonNode responseData(MvcResult result) throws Exception {
+        return objectMapper.readTree(result.getResponse().getContentAsString()).path("data");
     }
 
     private static String uniqueEmail(String prefix) {
