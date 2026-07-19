@@ -665,7 +665,9 @@ class QueueManagementIntegrationTest {
                                 "+919700000001",
                                 "OwnerPassword123",
                                 "Queue Business " + key + " " + UUID.randomUUID(),
-                                "CLINIC"))))
+                                "CLINIC",
+                                "IN",
+                                "Asia/Kolkata"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode data = responseData(result);
