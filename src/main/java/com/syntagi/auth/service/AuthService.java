@@ -17,11 +17,19 @@ import com.syntagi.business.repository.BusinessRepository;
 import com.syntagi.common.exception.ErrorCode;
 import com.syntagi.common.security.JwtTokenProvider;
 import com.syntagi.common.security.SyntagiPrincipal;
+import com.syntagi.queue.entity.QueueConfiguration;
+import com.syntagi.queue.entity.QueueSession;
+import com.syntagi.queue.repository.QueueConfigurationRepository;
+import com.syntagi.queue.repository.QueueSessionRepository;
+import com.syntagi.queue.service.QueueTimeService;
+import com.syntagi.servicecatalog.entity.BusinessService;
+import com.syntagi.servicecatalog.enums.ServiceMode;
+import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
 import com.syntagi.staff.entity.BusinessUser;
 import com.syntagi.staff.repository.BusinessUserRepository;
-import java.util.Locale;
 import java.time.DateTimeException;
 import java.time.ZoneId;
+import java.util.Locale;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -35,6 +43,11 @@ import org.springframework.transaction.annotation.Transactional;
 public class AuthService {
 
     private static final String TOKEN_TYPE = "Bearer";
+    private static final String DEFAULT_BUSINESS_TYPE = "GENERAL";
+    private static final String DEFAULT_SERVICE_NAME = "General Service";
+    private static final String DEFAULT_SERVICE_CODE = "GENERAL";
+    private static final String DEFAULT_QUEUE_NAME = "Main Queue";
+    private static final String DEFAULT_TIMEZONE = "Asia/Kolkata";
 
     private final UserRepository userRepository;
     private final BusinessRepository businessRepository;
@@ -44,6 +57,10 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final AuthMapper authMapper;
     private final BusinessIdentifierGenerator identifierGenerator;
+    private final BusinessServiceRepository serviceRepository;
+    private final QueueConfigurationRepository queueRepository;
+    private final QueueSessionRepository queueSessionRepository;
+    private final QueueTimeService queueTimeService;
 
     public AuthService(
             UserRepository userRepository,
@@ -53,7 +70,11 @@ public class AuthService {
             AuthenticationManager authenticationManager,
             JwtTokenProvider jwtTokenProvider,
             AuthMapper authMapper,
-            BusinessIdentifierGenerator identifierGenerator) {
+            BusinessIdentifierGenerator identifierGenerator,
+            BusinessServiceRepository serviceRepository,
+            QueueConfigurationRepository queueRepository,
+            QueueSessionRepository queueSessionRepository,
+            QueueTimeService queueTimeService) {
         this.userRepository = userRepository;
         this.businessRepository = businessRepository;
         this.businessUserRepository = businessUserRepository;
@@ -62,32 +83,54 @@ public class AuthService {
         this.jwtTokenProvider = jwtTokenProvider;
         this.authMapper = authMapper;
         this.identifierGenerator = identifierGenerator;
+        this.serviceRepository = serviceRepository;
+        this.queueRepository = queueRepository;
+        this.queueSessionRepository = queueSessionRepository;
+        this.queueTimeService = queueTimeService;
     }
 
     @Transactional
     public AuthResponse registerOwner(RegisterOwnerRequest request) {
-        String email = normalizeEmail(request.email());
-        if (userRepository.existsByEmailIgnoreCase(email)) {
+        RegistrationContact contact = registrationContact(request.mobileOrEmail());
+        if (userRepository.existsByEmailIgnoreCase(contact.email())
+                || (contact.mobile() != null && userRepository.existsByMobile(contact.mobile()))) {
             throw new AuthException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
 
         User user = userRepository.save(new User(
-                request.fullName(),
-                email,
-                request.mobile(),
+                request.ownerName(),
+                contact.email(),
+                contact.mobile(),
                 passwordEncoder.encode(request.password())));
 
         Business business = new Business(
                 request.businessName(),
                 identifierGenerator.uniqueSlug(request.businessName()),
-                request.businessType(),
+                DEFAULT_BUSINESS_TYPE,
                 identifierGenerator.uniquePublicQueueCode());
-        business.updateContactDetails(email, request.mobile());
-        business.updateAddress(null, null, null, null, request.country(), validTimezone(request.timezone()));
+        business.updateContactDetails(contact.publicEmail(), contact.mobile());
+        business.updateAddress(
+                null, null, null, null, "IN", validTimezone(request.timezone()));
         business = businessRepository.save(business);
 
         BusinessUser membership = businessUserRepository.saveAndFlush(
                 new BusinessUser(business, user, BusinessRole.OWNER));
+        BusinessService service = new BusinessService(
+                business, DEFAULT_SERVICE_NAME, DEFAULT_SERVICE_CODE, ServiceMode.WALK_IN);
+        service.updateDetails(null, 15, null, 0);
+        service = serviceRepository.saveAndFlush(service);
+        QueueConfiguration queue = new QueueConfiguration(business, service, DEFAULT_QUEUE_NAME);
+        queue.activate();
+        queue = queueRepository.saveAndFlush(queue);
+        queueSessionRepository.saveAndFlush(new QueueSession(
+                queue,
+                business,
+                service,
+                null,
+                queueTimeService.businessDate(business),
+                queueTimeService.businessTime(business),
+                null,
+                queueTimeService.nowOffset()));
         SyntagiPrincipal principal = toPrincipal(membership);
         return toAuthResponse(principal, user, business);
     }
@@ -178,10 +221,24 @@ public class AuthService {
     }
 
     private static String validTimezone(String timezone) {
+        String candidate = timezone == null || timezone.isBlank() ? DEFAULT_TIMEZONE : timezone.trim();
         try {
-            return ZoneId.of(timezone.trim()).getId();
+            return ZoneId.of(candidate).getId();
         } catch (DateTimeException exception) {
             throw new com.syntagi.common.exception.ApplicationException(ErrorCode.INVALID_TIMEZONE);
         }
+    }
+
+    private static RegistrationContact registrationContact(String mobileOrEmail) {
+        String normalized = mobileOrEmail.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("@")) {
+            return new RegistrationContact(normalized, null, normalized);
+        }
+        String mobile = normalized;
+        String digits = mobile.replace("+", "");
+        return new RegistrationContact("mobile." + digits + "@syntagi.invalid", mobile, null);
+    }
+
+    private record RegistrationContact(String email, String mobile, String publicEmail) {
     }
 }

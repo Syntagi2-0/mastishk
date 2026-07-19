@@ -291,10 +291,9 @@ class NotificationIntegrationTest {
         JsonNode data = data(mockMvc.perform(post("/api/auth/register-owner")
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(new RegisterOwnerRequest(
-                                "Owner " + key, key + UUID.randomUUID() + "@example.com",
-                                "+919700000001", "OwnerPassword123",
-                                "Business " + key + UUID.randomUUID(), "CLINIC",
-                                "IN", "Asia/Kolkata"))))
+                                "Owner " + key, "Business " + key + UUID.randomUUID(),
+                                key + UUID.randomUUID() + "@example.com", "OwnerPassword123",
+                                "Asia/Kolkata"))))
                 .andExpect(status().isCreated()).andReturn());
         return new Owner(data.path("accessToken").asText(),
                 data.path("business").path("publicQueueCode").asText());

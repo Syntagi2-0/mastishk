@@ -17,6 +17,14 @@ import com.syntagi.auth.repository.UserRepository;
 import com.syntagi.auth.service.AuthService;
 import com.syntagi.business.entity.Business;
 import com.syntagi.business.repository.BusinessRepository;
+import com.syntagi.customer.repository.CustomerRepository;
+import com.syntagi.queue.enums.QueueSessionStatus;
+import com.syntagi.queue.enums.QueueStatus;
+import com.syntagi.queue.repository.QueueConfigurationRepository;
+import com.syntagi.queue.repository.QueueSessionRepository;
+import com.syntagi.queue.repository.QueueTokenRepository;
+import com.syntagi.servicecatalog.enums.ServiceMode;
+import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
 import com.syntagi.staff.entity.BusinessUser;
 import com.syntagi.staff.repository.BusinessUserRepository;
 import java.util.UUID;
@@ -60,6 +68,11 @@ class AuthenticationIntegrationTest {
     private final BusinessUserRepository businessUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthService authService;
+    private final BusinessServiceRepository serviceRepository;
+    private final QueueConfigurationRepository queueRepository;
+    private final QueueSessionRepository sessionRepository;
+    private final QueueTokenRepository tokenRepository;
+    private final CustomerRepository customerRepository;
 
     @Autowired
     AuthenticationIntegrationTest(
@@ -69,7 +82,12 @@ class AuthenticationIntegrationTest {
             BusinessRepository businessRepository,
             BusinessUserRepository businessUserRepository,
             PasswordEncoder passwordEncoder,
-            AuthService authService) {
+            AuthService authService,
+            BusinessServiceRepository serviceRepository,
+            QueueConfigurationRepository queueRepository,
+            QueueSessionRepository sessionRepository,
+            QueueTokenRepository tokenRepository,
+            CustomerRepository customerRepository) {
         this.mockMvc = mockMvc;
         this.objectMapper = objectMapper;
         this.userRepository = userRepository;
@@ -77,6 +95,11 @@ class AuthenticationIntegrationTest {
         this.businessUserRepository = businessUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.authService = authService;
+        this.serviceRepository = serviceRepository;
+        this.queueRepository = queueRepository;
+        this.sessionRepository = sessionRepository;
+        this.tokenRepository = tokenRepository;
+        this.customerRepository = customerRepository;
     }
 
     @Test
@@ -104,6 +127,29 @@ class AuthenticationIntegrationTest {
                 .findActiveByUserId(user.getId(), org.springframework.data.domain.PageRequest.of(0, 1))
                 .getFirst();
         assertThat(membership.getRole()).isEqualTo(BusinessRole.OWNER);
+        Business business = membership.getBusiness();
+        var services = serviceRepository
+                .findByBusinessIdAndActiveTrueOrderByDisplayOrderAscNameAsc(business.getId());
+        assertThat(services).singleElement().satisfies(service -> {
+            assertThat(service.getName()).isEqualTo("General Service");
+            assertThat(service.getServiceMode()).isEqualTo(ServiceMode.WALK_IN);
+            assertThat(service.isActive()).isTrue();
+        });
+        var queues = queueRepository.findByBusinessIdAndStatusNotOrderByNameAsc(
+                business.getId(), QueueStatus.ARCHIVED);
+        assertThat(queues).singleElement().satisfies(queue -> {
+            assertThat(queue.getName()).isEqualTo("Main Queue");
+            assertThat(queue.getStatus()).isEqualTo(QueueStatus.ACTIVE);
+            assertThat(queue.getBusinessService().getId()).isEqualTo(services.getFirst().getId());
+        });
+        var sessions = sessionRepository.findByBusinessIdAndBusinessDate(
+                business.getId(), java.time.LocalDate.now(java.time.ZoneId.of(business.getTimezone())));
+        assertThat(sessions).singleElement().satisfies(session -> {
+            assertThat(session.getStatus()).isEqualTo(QueueSessionStatus.OPEN);
+            assertThat(session.getQueue().getId()).isEqualTo(queues.getFirst().getId());
+        });
+        assertThat(tokenRepository.count()).isZero();
+        assertThat(customerRepository.count()).isZero();
     }
 
     @Test
@@ -204,22 +250,20 @@ class AuthenticationIntegrationTest {
     }
 
     @Test
-    void registrationCreatesCompletedProfileWithoutCreatingAQueue() throws Exception {
-        String token = accessToken(register(uniqueEmail("onboarding-initial")));
+    void mobileRegistrationUsesFallbackTimezone() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/auth/register-owner")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RegisterOwnerRequest(
+                                "Mobile Owner", "Mobile Business", "+919876500001",
+                                "StrongPass123", null))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.user.mobile").value("+919876500001"))
+                .andReturn();
 
-        mockMvc.perform(get("/api/business").header("Authorization", "Bearer " + token))
+        mockMvc.perform(get("/api/business")
+                        .header("Authorization", "Bearer " + accessToken(result)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.email").isNotEmpty())
-                .andExpect(jsonPath("$.data.countryCode").value("IN"))
                 .andExpect(jsonPath("$.data.timezone").value("Asia/Kolkata"));
-
-        mockMvc.perform(get("/api/onboarding/status")
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.businessCreated").value(true))
-                .andExpect(jsonPath("$.data.profileCompleted").value(true))
-                .andExpect(jsonPath("$.data.firstQueueCreated").value(false))
-                .andExpect(jsonPath("$.data.setupCompleted").value(false));
     }
 
     @Test
@@ -250,57 +294,67 @@ class AuthenticationIntegrationTest {
     }
 
     @Test
-    void firstQueueCompletesOnlyItsOwnBusinessOnboarding() throws Exception {
-        String firstToken = accessToken(register(uniqueEmail("tenant-one")));
-        String secondToken = accessToken(register(uniqueEmail("tenant-two")));
-        String serviceId = responseData(mockMvc.perform(post("/api/services")
-                        .header("Authorization", "Bearer " + firstToken)
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(java.util.Map.of(
-                                "name", "Walk-ins",
-                                "serviceCode", "WALKIN-" + UUID.randomUUID(),
-                                "serviceMode", "WALK_IN",
-                                "expectedDurationMinutes", 15,
-                                "displayOrder", 1))))
-                .andExpect(status().isCreated()).andReturn()).path("id").asText();
-        String queueId = responseData(mockMvc.perform(post("/api/queues")
-                        .header("Authorization", "Bearer " + firstToken)
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(java.util.Map.of(
-                                "name", "Front desk", "serviceId", serviceId))))
-                .andExpect(status().isCreated()).andReturn()).path("id").asText();
-        mockMvc.perform(post("/api/queues/{queueId}/activate", queueId)
-                        .header("Authorization", "Bearer " + firstToken))
-                .andExpect(status().isOk());
+    void defaultQueuesRemainTenantIsolated() throws Exception {
+        MvcResult first = register(uniqueEmail("tenant-one"));
+        MvcResult second = register(uniqueEmail("tenant-two"));
 
-        mockMvc.perform(get("/api/onboarding/status")
-                        .header("Authorization", "Bearer " + firstToken))
+        mockMvc.perform(get("/api/queues")
+                        .header("Authorization", "Bearer " + accessToken(first)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.firstQueueCreated").value(true))
-                .andExpect(jsonPath("$.data.setupCompleted").value(true));
-        mockMvc.perform(get("/api/onboarding/status")
-                        .header("Authorization", "Bearer " + secondToken))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("Main Queue"));
+        mockMvc.perform(get("/api/queues")
+                        .header("Authorization", "Bearer " + accessToken(second)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.firstQueueCreated").value(false))
-                .andExpect(jsonPath("$.data.setupCompleted").value(false));
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].name").value("Main Queue"));
+    }
+
+    @Test
+    void retryDoesNotCreateDuplicateDefaults() throws Exception {
+        String email = uniqueEmail("retry");
+        register(email);
+        long users = userRepository.count();
+        long businesses = businessRepository.count();
+        long memberships = businessUserRepository.count();
+        long services = serviceRepository.count();
+        long queues = queueRepository.count();
+        long sessions = sessionRepository.count();
+
+        mockMvc.perform(post("/api/auth/register-owner")
+                        .contentType("application/json")
+                        .content(registrationJson(email, "Retried Business")))
+                .andExpect(status().isConflict());
+
+        assertThat(userRepository.count()).isEqualTo(users);
+        assertThat(businessRepository.count()).isEqualTo(businesses);
+        assertThat(businessUserRepository.count()).isEqualTo(memberships);
+        assertThat(serviceRepository.count()).isEqualTo(services);
+        assertThat(queueRepository.count()).isEqualTo(queues);
+        assertThat(sessionRepository.count()).isEqualTo(sessions);
     }
 
     @Test
     void registrationRollsBackWhenBusinessCreationFails() {
         String email = uniqueEmail("rollback");
+        long businessCount = businessRepository.count();
+        long serviceCount = serviceRepository.count();
+        long queueCount = queueRepository.count();
+        long sessionCount = sessionRepository.count();
         RegisterOwnerRequest request = new RegisterOwnerRequest(
                 "Rollback Owner",
+                "X".repeat(201),
                 email,
-                "+919876543210",
                 "StrongPass123",
-                "Rollback Business",
-                "X".repeat(51),
-                "IN",
                 "Asia/Kolkata");
 
         assertThatThrownBy(() -> authService.registerOwner(request))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(userRepository.existsByEmailIgnoreCase(email)).isFalse();
+        assertThat(businessRepository.count()).isEqualTo(businessCount);
+        assertThat(serviceRepository.count()).isEqualTo(serviceCount);
+        assertThat(queueRepository.count()).isEqualTo(queueCount);
+        assertThat(sessionRepository.count()).isEqualTo(sessionCount);
     }
 
     private User createAccount(String email) {
@@ -326,12 +380,9 @@ class AuthenticationIntegrationTest {
     private String registrationJson(String email, String businessName) throws Exception {
         return objectMapper.writeValueAsString(new RegisterOwnerRequest(
                 "Test Owner",
-                email,
-                "+919876543210",
-                "StrongPass123",
                 businessName,
-                "CLINIC",
-                "IN",
+                email,
+                "StrongPass123",
                 "Asia/Kolkata"));
     }
 

@@ -18,6 +18,7 @@ import com.syntagi.queue.entity.QueueConfiguration;
 import com.syntagi.queue.entity.QueueSession;
 import com.syntagi.queue.entity.QueueToken;
 import com.syntagi.queue.enums.QueueSessionStatus;
+import com.syntagi.queue.enums.QueueStatus;
 import com.syntagi.queue.enums.QueueTokenSourceType;
 import com.syntagi.queue.enums.QueueTokenStatus;
 import com.syntagi.queue.repository.QueueSessionRepository;
@@ -584,7 +585,7 @@ class QueueManagementIntegrationTest {
         mockMvc.perform(get("/api/public/businesses/{code}", first.publicQueueCode()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.business").value(first.service().getBusiness().getName()))
-                .andExpect(jsonPath("$.data.businessType").value("CLINIC"))
+                .andExpect(jsonPath("$.data.businessType").value("GENERAL"))
                 .andExpect(jsonPath("$.data.queueStatus").value("OPEN"))
                 .andExpect(jsonPath("$.data.availableServices[0].serviceId")
                         .value(first.service().getId().toString()))
@@ -661,16 +662,26 @@ class QueueManagementIntegrationTest {
                         .contentType("application/json")
                         .content(objectMapper.writeValueAsString(new RegisterOwnerRequest(
                                 "Queue Owner " + key,
-                                key + "-" + UUID.randomUUID() + "@example.com",
-                                "+919700000001",
-                                "OwnerPassword123",
                                 "Queue Business " + key + " " + UUID.randomUUID(),
-                                "CLINIC",
-                                "IN",
+                                key + "-" + UUID.randomUUID() + "@example.com",
+                                "OwnerPassword123",
                                 "Asia/Kolkata"))))
                 .andExpect(status().isCreated())
                 .andReturn();
         JsonNode data = responseData(result);
+        UUID businessId = UUID.fromString(data.path("business").path("id").asText());
+        LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
+        sessionRepository.deleteAll(sessionRepository.findByBusinessIdAndBusinessDate(
+                businessId, today));
+        sessionRepository.flush();
+        queueConfigurationRepository.deleteAll(
+                queueConfigurationRepository.findByBusinessIdAndStatusNotOrderByNameAsc(
+                        businessId, QueueStatus.ARCHIVED));
+        queueConfigurationRepository.flush();
+        serviceRepository.deleteAll(
+                serviceRepository.findByBusinessIdAndActiveTrueOrderByDisplayOrderAscNameAsc(
+                        businessId));
+        serviceRepository.flush();
         return new Owner(
                 data.path("accessToken").asText(),
                 data.path("business").path("publicQueueCode").asText());
