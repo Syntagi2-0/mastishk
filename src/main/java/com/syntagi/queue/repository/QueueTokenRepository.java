@@ -25,6 +25,19 @@ public interface QueueTokenRepository extends JpaRepository<QueueToken, UUID> {
             @Param("businessId") UUID businessId,
             @Param("businessDate") java.time.LocalDate businessDate);
 
+    @EntityGraph(attributePaths = {"businessService", "customer"})
+    @Query("""
+            select qt from QueueToken qt
+            where qt.business.id = :businessId
+              and qt.businessService.id = :serviceId
+              and qt.queueSession.businessDate = :businessDate
+            order by qt.queueOrder asc
+            """)
+    List<QueueToken> findDashboardTokens(
+            @Param("businessId") UUID businessId,
+            @Param("serviceId") UUID serviceId,
+            @Param("businessDate") java.time.LocalDate businessDate);
+
     @EntityGraph(attributePaths = "customer")
     @Query("""
             select qt from QueueToken qt

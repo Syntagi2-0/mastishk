@@ -17,6 +17,9 @@ import com.syntagi.queue.entity.QueueToken;
 import com.syntagi.queue.enums.QueueTokenStatus;
 import com.syntagi.queue.repository.QueueTokenRepository;
 import com.syntagi.queue.service.QueueTimeService;
+import com.syntagi.common.exception.ApplicationException;
+import com.syntagi.common.exception.ErrorCode;
+import com.syntagi.servicecatalog.entity.BusinessService;
 import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
 import com.syntagi.staff.repository.BusinessUserRepository;
 import java.time.LocalDate;
@@ -25,6 +28,7 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -101,9 +105,25 @@ public class DashboardService {
 
     @Transactional(readOnly = true)
     public TodayQueueResponse todayQueue() {
+        return todayQueue(null);
+    }
+
+    @Transactional(readOnly = true)
+    public TodayQueueResponse todayQueue(UUID serviceId) {
         AuthenticatedBusinessContext context = contextService.current();
-        List<QueueToken> tokens = tokenRepository.findDashboardTokens(
-                context.business().getId(), timeService.businessDate(context.business()));
+        LocalDate today = timeService.businessDate(context.business());
+        List<QueueToken> tokens;
+        if (serviceId == null) {
+            tokens = tokenRepository.findDashboardTokens(context.business().getId(), today);
+        } else {
+            BusinessService service = serviceRepository.findById(serviceId)
+                    .orElseThrow(() -> new ApplicationException(ErrorCode.SERVICE_NOT_FOUND));
+            if (!service.getBusiness().getId().equals(context.business().getId())) {
+                throw new ApplicationException(ErrorCode.CROSS_BUSINESS_ACCESS_FORBIDDEN);
+            }
+            tokens = tokenRepository.findDashboardTokens(
+                    context.business().getId(), serviceId, today);
+        }
         return new TodayQueueResponse(
                 group(tokens, QueueTokenStatus.CALLED),
                 group(tokens, QueueTokenStatus.WAITING),

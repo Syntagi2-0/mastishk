@@ -32,8 +32,9 @@ public class QueueDashboardController {
     }
 
     @GetMapping("/today-queue")
-    public ApiResponse<TodayQueueResponse> todayQueue() {
-        return ApiResponse.success(fullDashboardService.todayQueue());
+    public ApiResponse<TodayQueueResponse> todayQueue(
+            @RequestParam(required = false) UUID serviceId) {
+        return ApiResponse.success(fullDashboardService.todayQueue(serviceId));
     }
 
     @GetMapping("/today-appointments")

@@ -10,6 +10,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.util.Locale;
 import java.util.Objects;
 import lombok.AccessLevel;
@@ -35,11 +36,39 @@ public class Customer extends BaseEntity {
     @Column(length = 255)
     private String email;
 
+    @Column(length = 30)
+    private String gender;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(length = 500)
+    private String address;
+
+    @Column(length = 500)
+    private String notes;
+
     public Customer(Business business, String fullName, String mobile, String email) {
+        this(business, fullName, mobile, email, null, null, null, null);
+    }
+
+    public Customer(
+            Business business,
+            String fullName,
+            String mobile,
+            String email,
+            String gender,
+            LocalDate dateOfBirth,
+            String address,
+            String notes) {
         this.business = Objects.requireNonNull(business, "business is required");
         this.fullName = requireText(fullName, "fullName");
         this.mobile = requireText(mobile, "mobile");
         this.email = normalizeEmail(email);
+        this.gender = trimToNull(gender);
+        this.dateOfBirth = dateOfBirth;
+        this.address = trimToNull(address);
+        this.notes = trimToNull(notes);
     }
 
     @PrePersist
@@ -48,6 +77,9 @@ public class Customer extends BaseEntity {
         fullName = requireText(fullName, "fullName");
         mobile = requireText(mobile, "mobile");
         email = normalizeEmail(email);
+        gender = trimToNull(gender);
+        address = trimToNull(address);
+        notes = trimToNull(notes);
     }
 
     private static String normalizeEmail(String value) {
@@ -55,6 +87,13 @@ public class Customer extends BaseEntity {
             return null;
         }
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static String trimToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private static String requireText(String value, String field) {

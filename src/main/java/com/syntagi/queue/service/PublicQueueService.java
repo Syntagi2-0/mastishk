@@ -21,6 +21,7 @@ import com.syntagi.servicecatalog.repository.BusinessServiceRepository;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -76,10 +77,28 @@ public class PublicQueueService {
             throw new ApplicationException(ErrorCode.WALK_IN_NOT_SUPPORTED);
         }
 
-        String mobile = request.mobile().trim();
-        Customer customer = customerRepository.findByBusinessIdAndMobile(business.getId(), mobile)
-                .orElseGet(() -> customerRepository.save(
-                        new Customer(business, request.fullName(), mobile, null)));
+        String mobile = normalizeMobile(request.mobile());
+        Customer customer = mobile == null
+                ? customerRepository.save(new Customer(
+                        business,
+                        request.fullName(),
+                        placeholderMobile(),
+                        request.email(),
+                        request.gender(),
+                        request.dateOfBirth(),
+                        request.address(),
+                        request.notes()))
+                : customerRepository.findByBusinessIdAndMobile(business.getId(), mobile)
+                        .orElseGet(() -> customerRepository.save(
+                                new Customer(
+                                        business,
+                                        request.fullName(),
+                                        mobile,
+                                        request.email(),
+                                        request.gender(),
+                                        request.dateOfBirth(),
+                                        request.address(),
+                                        request.notes())));
 
         int tokenNumber = session.nextWalkInTokenNumber();
         long queueOrder = session.nextGlobalTokenNumber();
@@ -108,6 +127,17 @@ public class PublicQueueService {
                 token.getJoinedAt(),
                 position,
                 Math.max(0, position - 1L));
+    }
+
+    private static String normalizeMobile(String mobile) {
+        if (mobile == null || mobile.isBlank()) {
+            return null;
+        }
+        return mobile.trim();
+    }
+
+    private static String placeholderMobile() {
+        return "WALKIN-" + UUID.randomUUID().toString().replace("-", "").substring(0, 13);
     }
 
     @Transactional(readOnly = true)

@@ -32,6 +32,7 @@ public class QueueMapper {
     }
 
     private QueueCustomerResponse toCustomerResponse(Customer customer) {
-        return new QueueCustomerResponse(customer.getFullName(), customer.getMobile());
+        String mobile = customer.getMobile().startsWith("WALKIN-") ? "" : customer.getMobile();
+        return new QueueCustomerResponse(customer.getFullName(), mobile);
     }
 }
