@@ -140,7 +140,11 @@ public class QueueSessionLifecycleService {
         LocalTime closingTime = request.closingTime() != null
                 ? request.closingTime()
                 : schedule == null ? null : schedule.getOperatingEndTime();
-        if (closingTime != null && !closingTime.isAfter(openingTime)) {
+        // A closing time before the opening time represents an overnight queue
+        // (for example, 21:00 to 03:00). Equal times remain invalid because the
+        // request does not carry enough information to distinguish zero hours
+        // from a full 24-hour window.
+        if (closingTime != null && closingTime.equals(openingTime)) {
             throw new ApplicationException(ErrorCode.INVALID_TIME_RANGE);
         }
         QueueSession session = sessionRepository.saveAndFlush(new QueueSession(

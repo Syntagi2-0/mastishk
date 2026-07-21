@@ -326,19 +326,32 @@ class QueueManagementIntegrationTest {
     }
 
     @Test
-    void manualQueueRejectsInvalidOperatingTimeRange() throws Exception {
-        QueueSetup setup = createScheduledQueue("manual-invalid-times");
+    void manualQueueAcceptsOvernightOperatingTimeRange() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-overnight-times");
 
         createQueueSession(
                         setup,
                         new CreateQueueSessionRequest(
                                 setup.service().getId(), LocalTime.of(18, 0), LocalTime.of(9, 30)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.openingTime").value("18:00:00"))
+                .andExpect(jsonPath("$.data.closingTime").value("09:30:00"));
+
+        QueueSession session = findSession(setup);
+        assertThat(session.getOpeningTime()).isEqualTo(LocalTime.of(18, 0));
+        assertThat(session.getClosingTime()).isEqualTo(LocalTime.of(9, 30));
+    }
+
+    @Test
+    void manualQueueRejectsEqualOperatingTimes() throws Exception {
+        QueueSetup setup = createScheduledQueue("manual-equal-times");
+
+        createQueueSession(
+                        setup,
+                        new CreateQueueSessionRequest(
+                                setup.service().getId(), LocalTime.of(18, 0), LocalTime.of(18, 0)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("INVALID_TIME_RANGE"));
-        assertThat(sessionRepository.findByBusinessServiceIdAndBusinessDate(
-                        setup.service().getId(),
-                        LocalDate.now(ZoneId.of(setup.service().getBusiness().getTimezone()))))
-                .isEmpty();
         deleteSchedules(setup);
     }
 
